@@ -1,0 +1,1 @@
+ALTER TABLE `local_runners` ADD `allowedSkillSlugsJson` varchar(512) DEFAULT '["web-research","document-intelligence","code-workspace","data-analysis","visual-creation","workflow-automation"]' NOT NULL;

@@ -1,0 +1,1 @@
+ALTER TABLE `local_runners` ADD `allowedSensitiveActionsJson` varchar(256) DEFAULT '["file_mutation","external_sharing","command_execution"]' NOT NULL;

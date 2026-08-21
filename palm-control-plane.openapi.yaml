@@ -1,0 +1,163 @@
+openapi: 3.1.0
+info:
+  title: Palm.ai Control Plane API
+  version: 1.0.0
+  summary: Authenticated task orchestration and GitHub Actions runner evidence API.
+  description: |
+    Palm.ai exposes user-authorized task APIs and runner-only event endpoints. Browser clients never receive GitHub Actions dispatch credentials. Runner events are factual, sequenced execution evidence rather than private model reasoning.
+servers:
+  - url: https://api.palm.example/api/v1
+security:
+  - palmSession: []
+paths:
+  /tasks:
+    post:
+      operationId: createTask
+      summary: Create and queue a delegated Palm.ai task.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskCreateRequest' }
+      responses:
+        '201':
+          description: Task accepted.
+          content: { application/json: { schema: { $ref: '#/components/schemas/Task' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /tasks/{taskId}:
+    get:
+      operationId: getTask
+      summary: Get the authorized task detail, trace, run, and artifacts.
+      parameters: [{ $ref: '#/components/parameters/TaskId' }]
+      responses:
+        '200': { description: Task detail, content: { application/json: { schema: { $ref: '#/components/schemas/TaskDetail' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /tasks/{taskId}/execute:
+    post:
+      operationId: executeTask
+      summary: Execute locally or dispatch the configured GitHub Actions runner.
+      parameters: [{ $ref: '#/components/parameters/TaskId' }]
+      responses:
+        '202': { description: GitHub Actions runner accepted, content: { application/json: { schema: { $ref: '#/components/schemas/TaskDetail' } } } }
+        '200': { description: Local action completed, content: { application/json: { schema: { $ref: '#/components/schemas/TaskDetail' } } } }
+  /tasks/{taskId}/cancel:
+    post:
+      operationId: cancelTask
+      summary: Request cancellation of an active GitHub Actions runner execution.
+      parameters: [{ $ref: '#/components/parameters/TaskId' }]
+      responses:
+        '202': { description: Cancellation requested, content: { application/json: { schema: { $ref: '#/components/schemas/Run' } } } }
+        '409': { description: The task has no cancellable GitHub Actions execution. }
+  /runs/{runId}/events:
+    get:
+      operationId: streamRunEvents
+      summary: Subscribe to authorized factual run events over Server-Sent Events.
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+        - name: taskId
+          in: query
+          required: true
+          schema: { type: integer, minimum: 1 }
+        - in: header
+          name: Last-Event-ID
+          schema: { type: string }
+      responses:
+        '200':
+          description: text/event-stream containing RunEvent payloads.
+          content: { text/event-stream: { schema: { $ref: '#/components/schemas/RunEvent' } } }
+  /artifacts/{artifactId}/download:
+    get:
+      operationId: downloadArtifact
+      summary: Resolve an authorized short-lived artifact download.
+      parameters:
+        - name: artifactId
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '302': { description: Redirect to a short-lived signed object URL. }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /internal/runs/{runId}/events:
+    post:
+      operationId: appendRunnerEvent
+      summary: Append one sequenced execution event from a GitHub Actions runner.
+      security: [{ runnerEventToken: [] }]
+      parameters: [{ $ref: '#/components/parameters/RunId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/RunnerEventInput' } } }
+      responses:
+        '202': { description: Event stored. }
+        '200': { description: Idempotent replay of an existing event. }
+        '400': { description: Invalid sequence or event payload. }
+        '401': { description: Missing, expired, or invalid per-run event token. }
+components:
+  securitySchemes:
+    palmSession: { type: http, scheme: bearer, bearerFormat: PalmSession }
+    runnerEventToken: { type: http, scheme: bearer, bearerFormat: RunnerEventJWT }
+  parameters:
+    TaskId: { name: taskId, in: path, required: true, schema: { type: integer, minimum: 1 } }
+    RunId: { name: runId, in: path, required: true, schema: { type: integer, minimum: 1 } }
+  responses:
+    Unauthorized: { description: Palm session is required. }
+    NotFound: { description: The authorized resource does not exist. }
+  schemas:
+    TaskCreateRequest:
+      type: object
+      required: [objective]
+      properties:
+        objective: { type: string, minLength: 2, maxLength: 12000 }
+        projectId: { type: integer, minimum: 1 }
+        attachmentIds: { type: array, items: { type: string }, maxItems: 20 }
+        capabilityScope: { type: array, items: { type: string }, uniqueItems: true }
+    Task:
+      type: object
+      required: [id, title, prompt, status, createdAt]
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        prompt: { type: string }
+        status: { type: string, enum: [queued, running, completed, error] }
+        createdAt: { type: string, format: date-time }
+    Run:
+      type: object
+      required: [id, taskId, provider, status, createdAt]
+      properties:
+        id: { type: integer }
+        taskId: { type: integer }
+        provider: { type: string, enum: [local, github_actions] }
+        status: { type: string, enum: [queued, dispatching, provisioning, running, collecting, completed, failed, cancellation_requested, cancelled] }
+        githubWorkflowRunId: { type: [string, 'null'] }
+        githubWorkflowRunUrl: { type: [string, 'null'], format: uri }
+        createdAt: { type: string, format: date-time }
+    RunEvent:
+      type: object
+      required: [id, runId, eventSeq, source, type, status, detail, createdAt]
+      properties:
+        id: { type: integer }
+        runId: { type: integer }
+        eventSeq: { type: integer, minimum: 1 }
+        source: { type: string, enum: [control_plane, github_actions, runner, artifact_store] }
+        type: { type: string, example: runner.provisioning }
+        status: { type: string, example: running }
+        detail: { type: string }
+        createdAt: { type: string, format: date-time }
+    RunnerEventInput:
+      type: object
+      required: [eventSeq, type, status, detail]
+      properties:
+        eventSeq: { type: integer, minimum: 1 }
+        type: { type: string, maxLength: 96 }
+        status: { type: string, enum: [running, collecting, completed, failed, cancelled] }
+        detail: { type: string, maxLength: 8000 }
+        data: { type: object, additionalProperties: true }
+    TaskDetail:
+      type: object
+      required: [task, messages, steps, attachments]
+      properties:
+        task: { $ref: '#/components/schemas/Task' }
+        latestRun: { anyOf: [{ $ref: '#/components/schemas/Run' }, { type: 'null' }] }
+        runnerEvents: { type: array, items: { $ref: '#/components/schemas/RunEvent' } }
+        messages: { type: array, items: { type: object, additionalProperties: true } }
+        steps: { type: array, items: { type: object, additionalProperties: true } }
+        attachments: { type: array, items: { type: object, additionalProperties: true } }

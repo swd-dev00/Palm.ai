@@ -1,0 +1,100 @@
+# Project TODO
+
+- [x] Define the autonomous-agent task, execution, skill, and attachment domain model.
+- [x] Create persistent task history with resume and delete controls.
+- [x] Build a premium dark split-pane workspace with concurrent navigation, chat, and execution-trace panels.
+- [x] Implement streamed task submission with in-progress indicators and structured agent updates.
+- [x] Implement a transparent live execution trace for agent steps, decisions, and tool activity.
+- [x] Add an extensible skills catalog with per-skill enable and disable controls.
+- [x] Add attachment intake and direct result-download affordances in the workspace.
+- [x] Add an authenticated personal dashboard with recent tasks, usage indicators, and account settings access.
+- [x] Build polished responsive navigation, empty states, focus states, and micro-interactions.
+- [x] Add automated tests for task lifecycle and skill configuration behavior.
+- [x] Perform visual verification on desktop and mobile layouts.
+- [x] Apply the Palm.ai brand name and a distinct premium product identity throughout the application.
+- [x] Position Palm.ai as an observable action engine that plans and coordinates multi-step workflows through its explicit Local Runner evidence path.
+- [x] Defer token-level model streaming because the connected model proxy does not expose it; retain server-sent workflow event streaming.
+- [x] Connect a user-owned Local Runner for queued per-task execution without representing an unavailable cloud isolation service as active.
+- [x] Define an Azure Container Apps Jobs-compatible runner contract with task-level lifecycle, least-privilege identity, network controls, runtime limits, and artifact handoff.
+- [x] Add runner state and isolation-policy context to the Palm.ai dashboard and execution trace interface design.
+- [x] Document an Azure deployment topology separating the Palm.ai control plane from time-boxed task containers.
+- [x] Choose the execution-runner deployment path after reviewing Azure Container Apps Jobs, an Azure VM, and no-runner workspace-only operation.
+- [x] Define the Palm.ai dashboard and chat-to-execution interaction states for Azure-backed tasks.
+- [x] Produce a system architecture diagram for the Palm.ai control plane and Azure Container Apps Jobs runner.
+- [x] Produce the control-plane API specification for task creation, runner dispatch, event ingestion, artifact retrieval, and cancellation.
+- [x] Respect the user’s restriction against accessing or controlling their Azure browser session; use public documentation and explicitly shared context only.
+- [x] Implement runner-aware dashboard and chat-to-execution UI states with live dispatch, provisioning, execution, artifact, and cancellation feedback.
+- [x] Create a parameterized Bicep package for a private Azure Container Apps Jobs runner environment, identity, registry access, storage, network controls, and broker service.
+- [x] Create the complete OpenAPI 3.1 specification for Palm.ai task, run, artifact, and runner integration endpoints.
+- [x] Implement a validated Azure dispatch client and secure control-plane procedures using server-only configuration placeholders.
+- [x] Add automated tests for Azure request construction, dispatch status transitions, and runner event validation.
+- [x] Defer Azure deployment and runner configuration at the user’s direction under the strict $0 ongoing-cost requirement.
+- [x] Grant the Azure dispatch broker identity `AcrPull` in the prepared package; defer Azure CLI validation with the Azure deployment.
+- [x] Add automated coverage for Palm.ai Azure runner lifecycle transitions through dispatch, provisioning, execution, completion, failure, and cancellation.
+- [x] Grant the Azure dispatch broker identity `AcrPull` access in the Bicep package.
+- [x] Defer Bicep compilation and validation until paid Azure deployment is intentionally reconsidered.
+- [x] Define and implement the requested new Palm.ai route through authenticated Local Runner registration, heartbeat, task claim, and evidence-reporting endpoints.
+- [x] Mark the misinterpreted keyword-research route as out of scope for the Azure and Local Runner work.
+- [x] Defer Azure-side route implementation under the strict $0 ongoing-cost requirement.
+- [x] Defer the alternative Azure route under the strict $0 ongoing-cost requirement.
+- [x] Evaluate non-Azure execution-runner options and select the user-owned Local Runner for the zero-cost path.
+- [x] Implement a zero-cost local Palm.ai runner adapter that uses the user’s own machine and never requires paid cloud execution.
+- [x] Refactor Palm.ai dispatch behind a provider-neutral execution boundary with Local Runner preferred and paid cloud dispatch disabled by default.
+- [x] Document the zero-cost limitations: the local machine must be online, runner tools remain locally installed, and no Azure credentials are needed.
+- [x] Render queued Local Runner work accurately in Palm.ai and avoid presenting it as completed before the local machine claims it.
+- [x] Extract Palm.ai runner selection into a tested provider-adapter interface shared by Local, built-in, and optional Azure implementations.
+- [x] Align the Local Runner queue event contract between server and client and verify waiting feedback remains truthful before claim.
+- [x] Add automated coverage for the Local Runner queue event path and its non-completion behavior.
+- [x] Add an integration-level Local Runner queue-stream test that proves Palm shows a waiting state without a completion result before task claim.
+- [x] Add component-level coverage of Palm.ai’s execution stream to verify local queue waiting, refresh, and non-completion feedback before claim.
+- [x] Add a rendered component test proving Palm.ai displays Local Runner queue status instead of completion before claim.
+- [x] Define an explicit Local Runner file-tool allowlist and a sensitive-action policy requiring approval.
+- [x] Implement Local Runner file-processing manifests and allowlisted local handlers.
+- [x] Add runner device renaming and revocation controls to Palm.ai settings.
+- [x] Add task-level approval controls for sensitive Local Runner actions before execution.
+- [x] Add automated coverage for file-tool policy, runner revocation, device renaming, and approval gating.
+- [x] Replace client-simulated trace progress with durable task-state updates that only reflect workflow events the application can actually perform.
+- [x] Add mobile-accessible navigation for Workspace, Overview, Capabilities, and Settings.
+- [x] Add automated tests covering task creation, resume/delete behavior, and persisted skill settings.
+- [x] Add an automated test that verifies a saved skill preference is reflected when the capability catalog is read again.
+- [x] Add a text-metadata handler and structured file-processing manifest to the Local Runner’s allowlisted work record.
+- [x] Refactor SettingsView hooks so device rename and revoke controls are safe across authentication changes.
+- [x] Test persisted device rename and revocation helper behavior.
+- [x] Test that a revoked Local Runner token cannot authenticate or claim new work.
+- [x] Add per-device Local Runner capability and action scopes with server-side enforcement.
+- [x] Add configurable approval expiry, automatic expiration on access or task claim, and durable audit history.
+- [x] Add a visual Local Runner management dashboard with current connection status and recent device activity.
+- [x] Add automated coverage for scoped task claims, approval expiry, audit events, and device activity reporting.
+- [x] Add per-device Palm capability scopes and filter claimed task capability payloads accordingly.
+- [x] Test audit-event persistence and computed device activity dashboard status.
+- [x] Add explicit per-device sensitive-action-class restrictions and enforce them before task claim.
+- [x] Preserve each runner’s capability scope when its file-tool settings are saved.
+- [x] Add a regression test for action-class restriction and capability-scope preservation on tool-save.
+- [x] Add per-device Local Runner approval-timeout overrides with safe fallback to the workspace default.
+- [x] Add audit-history filters for device, event type, and time range.
+- [x] Add a client-side CSV export of the currently filtered Palm.ai audit history.
+- [x] Add automated coverage for timeout override resolution, audit filtering, and CSV serialization.
+- [x] Add a durable-data approval countdown surface for pending requests approaching expiry.
+- [x] Add selectable audit CSV columns while preserving a stable export format.
+- [x] Add saved audit-filter presets with create, apply, and delete flows.
+- [x] Add automated coverage for countdown calculation, selected CSV columns, and saved audit presets.
+- [x] Preserve canonical CSV column order when users toggle export fields.
+- [x] Add regression coverage for canonical CSV order and saved audit preset restoration.
+- [x] Add reusable, device-scoped CSV export column templates with save, apply, and delete flows.
+- [x] Add automated coverage for device export template persistence and stable column application.
+- [x] Wire applied device templates into the active audit CSV export column selection.
+- [x] Add regression coverage for actual CSV output after apply and device-isolated template behavior.
+- [x] Convert action runtime step 3 into a bounded model tool-call loop using attachment-scoped allowlisted tools and enabled skills.
+- [x] Dispatch model-requested CSV profiling through the existing allowlisted attachment tool path without modifying runner, approval, or audit layers.
+- [x] Add automated coverage for iteration caps, tool-result message continuation, and terminal no-tool-call behavior.
+- [x] Profile attached CSV data through the existing allowlisted file path and provide factual evidence to the action runtime.
+- [x] Include compact CSV profile evidence in the final Palm.ai model request rather than filenames alone.
+- [x] Add regression coverage proving CSV attachment content reaches the model prompt and shapes the runtime trace.
+- [x] Map current attachment upload, Local Runner claim, approval, and audit boundaries for a local-only input path.
+- [x] Add local-only attachment references so eligible Local Runner tasks do not upload file bytes to cloud storage.
+- [x] Extend per-device policy with browser read/write tool scopes, a browser-control sensitive-action class, and domain-navigation boundaries.
+- [x] Add a zero-cost Node Playwright Local Browser Runner that uses the existing registration, heartbeat, claim, approval, and evidence-event protocol.
+- [x] Keep browser write actions approval-gated by default and keep browser attachment content off the cloud path.
+- [x] Add workspace controls that explain local-only attachment routing and browser-runner connection and scope status.
+- [x] Add automated coverage for local-only attachment references, browser policy enforcement, and safe browser-runner task dispatch.
+- [x] Add a regression test proving local_browser tasks queue only for browser runners and never fall back to cloud execution.
