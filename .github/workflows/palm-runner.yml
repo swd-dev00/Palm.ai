@@ -3,16 +3,24 @@ name: Palm GitHub Actions runner
 on:
   workflow_dispatch:
     inputs:
-      run_id:
-        description: Palm runner execution ID
+      run_mode:
+        description: Choose contract validation now or hosted Palm execution after deployment
         required: true
+        default: validate
+        type: choice
+        options:
+          - validate
+          - execute
+      run_id:
+        description: Palm runner execution ID; required only for execute mode
+        required: false
         type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: palm-runner-${{ inputs.run_id }}
+  group: palm-runner-${{ inputs.run_mode }}-${{ inputs.run_id || github.run_id }}
   cancel-in-progress: false
 
 jobs:
@@ -30,6 +38,7 @@ jobs:
   execute:
     name: Execute Palm run ${{ inputs.run_id }}
     needs: validate_openapi
+    if: ${{ inputs.run_mode == 'execute' && inputs.run_id != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
