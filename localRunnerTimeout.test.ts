@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { localApprovalSettings, localRunnerAuditEvents, localRunners, localTaskApprovals } from "../drizzle/schema";
+import { localApprovalSettings, localRunnerAuditEvents, localRunners, localTaskApprovals } from "./drizzle/schema";
 
 const state = vi.hoisted(() => {
   process.env.DATABASE_URL = "mysql://palm-timeout-test";

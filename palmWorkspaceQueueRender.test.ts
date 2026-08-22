@@ -2,7 +2,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 vi.mock("streamdown", () => ({ Streamdown: ({ children }: { children: React.ReactNode }) => React.createElement("div", null, children) }));
-import { RunnerStatusCard } from "../client/src/components/PalmWorkspace";
+import { RunnerStatusCard } from "./client/src/components/PalmWorkspace";
 
 describe("PalmWorkspace Local Runner queue UI", () => {
   it("renders a truthful queued status and does not render a completion label before local claim", () => {
