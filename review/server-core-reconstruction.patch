@@ -1,0 +1,327 @@
+[1mdiff --git a/context.ts b/context.ts[m
+[1mindex e4ae108..864fa41 100644[m
+[1m--- a/context.ts[m
+[1m+++ b/context.ts[m
+[36m@@ -1,28 +1 @@[m
+[31m-import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";[m
+[31m-import type { User } from "../../drizzle/schema";[m
+[31m-import { sdk } from "./sdk";[m
+[31m-[m
+[31m-export type TrpcContext = {[m
+[31m-  req: CreateExpressContextOptions["req"];[m
+[31m-  res: CreateExpressContextOptions["res"];[m
+[31m-  user: User | null;[m
+[31m-};[m
+[31m-[m
+[31m-export async function createContext([m
+[31m-  opts: CreateExpressContextOptions[m
+[31m-): Promise<TrpcContext> {[m
+[31m-  let user: User | null = null;[m
+[31m-[m
+[31m-  try {[m
+[31m-    user = await sdk.authenticateRequest(opts.req);[m
+[31m-  } catch (error) {[m
+[31m-    // Authentication is optional for public procedures.[m
+[31m-    user = null;[m
+[31m-  }[m
+[31m-[m
+[31m-  return {[m
+[31m-    req: opts.req,[m
+[31m-    res: opts.res,[m
+[31m-    user,[m
+[31m-  };[m
+[31m-}[m
+[32m+[m[32mexport { createContext, type TrpcContext } from "./server/_core/context";[m
+[1mdiff --git a/routers.ts b/routers.ts[m
+[1mindex 108b82b..7e2d44c 100644[m
+[1m--- a/routers.ts[m
+[1m+++ b/routers.ts[m
+[36m@@ -1,8 +1,7 @@[m
+ import { z } from "zod";[m
+[31m-import { COOKIE_NAME } from "@shared/const";[m
+[31m-import { getSessionCookieOptions } from "./_core/cookies";[m
+[31m-import { systemRouter } from "./_core/systemRouter";[m
+[31m-import { protectedProcedure, publicProcedure, router } from "./_core/trpc";[m
+[32m+[m[32mimport { COOKIE_NAME, getSessionCookieOptions } from "./server/_core/cookies";[m
+[32m+[m[32mimport { systemRouter } from "./server/_core/systemRouter";[m
+[32m+[m[32mimport { protectedProcedure, publicProcedure, router } from "./server/_core/trpc";[m
+ import {[m
+   addAttachment,[m
+   createProject,[m
+[1mdiff --git a/server/_core/context.ts b/server/_core/context.ts[m
+[1mnew file mode 100644[m
+[1mindex 0000000..1fc514a[m
+[1m--- /dev/null[m
+[1m+++ b/server/_core/context.ts[m
+[36m@@ -0,0 +1,22 @@[m
+[32m+[m[32mimport type { CreateExpressContextOptions } from "@trpc/server/adapters/express";[m
+[32m+[m[32mimport type { User } from "../../schema";[m
+[32m+[m[32mimport { getUserByOpenId } from "../../db";[m
+[32m+[m
+[32m+[m[32mexport type TrpcContext = {[m
+[32m+[m[32m  req: CreateExpressContextOptions["req"];[m
+[32m+[m[32m  res: CreateExpressContextOptions["res"];[m
+[32m+[m[32m  user: User | null;[m
+[32m+[m[32m};[m
+[32m+[m
+[32m+[m[32m/**[m
+[32m+[m[32m * The original export omitted its OAuth SDK adapter. This context intentionally[m
+[32m+[m[32m * refuses to manufacture an authenticated production user. A local developer[m
+[32m+[m[32m * may set PALM_DEV_OPEN_ID in non-production after seeding a matching user.[m
+[32m+[m[32m * Replace this branch with the real OAuth/session resolver before production.[m
+[32m+[m[32m */[m
+[32m+[m[32mexport async function createContext(opts: CreateExpressContextOptions): Promise<TrpcContext> {[m
+[32m+[m[32m  let user: User | null = null;[m
+[32m+[m[32m  const devOpenId = process.env.NODE_ENV !== "production" ? process.env.PALM_DEV_OPEN_ID : undefined;[m
+[32m+[m[32m  if (devOpenId) user = (await getUserByOpenId(devOpenId)) ?? null;[m
+[32m+[m[32m  return { req: opts.req, res: opts.res, user };[m
+[32m+[m[32m}[m
+[1mdiff --git a/server/_core/cookies.ts b/server/_core/cookies.ts[m
+[1mnew file mode 100644[m
+[1mindex 0000000..b62dfea[m
+[1m--- /dev/null[m
+[1m+++ b/server/_core/cookies.ts[m
+[36m@@ -0,0 +1,17 @@[m
+[32m+[m[32mimport type { Request } from "express";[m
+[32m+[m
+[32m+[m[32mexport const COOKIE_NAME = "palm_session";[m
+[32m+[m
+[32m+[m[32mfunction requestUsesHttps(req: Request) {[m
+[32m+[m[32m  const forwardedProto = req.header("x-forwarded-proto")?.split(",")[0]?.trim();[m
+[32m+[m[32m  return req.secure || forwardedProto === "https";[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport function getSessionCookieOptions(req: Request) {[m
+[32m+[m[32m  return {[m
+[32m+[m[32m    httpOnly: true,[m
+[32m+[m[32m    sameSite: "lax" as const,[m
+[32m+[m[32m    secure: process.env.NODE_ENV === "production" || requestUsesHttps(req),[m
+[32m+[m[32m    path: "/",[m
+[32m+[m[32m  };[m
+[32m+[m[32m}[m
+[1mdiff --git a/server/_core/env.ts b/server/_core/env.ts[m
+[1mnew file mode 100644[m
+[1mindex 0000000..ed9b716[m
+[1m--- /dev/null[m
+[1m+++ b/server/_core/env.ts[m
+[36m@@ -0,0 +1 @@[m
+[32m+[m[32mexport { ENV } from "../../env";[m
+[1mdiff --git a/server/_core/index.ts b/server/_core/index.ts[m
+[1mnew file mode 100644[m
+[1mindex 0000000..a5fa396[m
+[1m--- /dev/null[m
+[1m+++ b/server/_core/index.ts[m
+[36m@@ -0,0 +1,61 @@[m
+[32m+[m[32mimport express from "express";[m
+[32m+[m[32mimport { existsSync } from "node:fs";[m
+[32m+[m[32mimport { resolve } from "node:path";[m
+[32m+[m[32mimport { createExpressMiddleware } from "@trpc/server/adapters/express";[m
+[32m+[m[32mimport { appRouter } from "../../routers";[m
+[32m+[m[32mimport { getGithubActionsRunnerAssignment, ingestRunnerEvent } from "../../runnerRuntime";[m
+[32m+[m[32mimport { createContext } from "./context";[m
+[32m+[m
+[32m+[m[32mconst app = express();[m
+[32m+[m[32mconst port = Number.parseInt(process.env.PORT || "3000", 10);[m
+[32m+[m
+[32m+[m[32mapp.disable("x-powered-by");[m
+[32m+[m[32mapp.use(express.json({ limit: "5mb" }));[m
+[32m+[m[32mapp.use(express.urlencoded({ extended: false, limit: "5mb" }));[m
+[32m+[m
+[32m+[m[32mapp.get("/healthz", (_req, res) => {[m
+[32m+[m[32m  res.status(200).json({ status: "ok", service: "palm-control-plane" });[m
+[32m+[m[32m});[m
+[32m+[m
+[32m+[m[32mapp.post("/api/palm/runs/:runId/assignment", async (req, res) => {[m
+[32m+[m[32m  const runId = Number.parseInt(req.params.runId, 10);[m
+[32m+[m[32m  const signature = req.header("x-palm-runner-signature") || "";[m
+[32m+[m[32m  if (!Number.isInteger(runId) || runId <= 0 || !signature) {[m
+[32m+[m[32m    return res.status(400).json({ error: "A runner id and GitHub Actions runner signature are required." });[m
+[32m+[m[32m  }[m
+[32m+[m[32m  try {[m
+[32m+[m[32m    res.status(200).json(await getGithubActionsRunnerAssignment({ runId, signature }));[m
+[32m+[m[32m  } catch (error) {[m
+[32m+[m[32m    const message = error instanceof Error ? error.message : "GitHub Actions runner assignment could not be issued.";[m
+[32m+[m[32m    res.status(message.includes("signature") ? 401 : 400).json({ error: message });[m
+[32m+[m[32m  }[m
+[32m+[m[32m});[m
+[32m+[m
+[32m+[m[32mapp.post("/api/palm/runs/:runId/events", async (req, res) => {[m
+[32m+[m[32m  const runId = Number.parseInt(req.params.runId, 10);[m
+[32m+[m[32m  const token = req.header("authorization")?.replace(/^Bearer\s+/i, "");[m
+[32m+[m[32m  if (!Number.isInteger(runId) || runId <= 0 || !token) {[m
+[32m+[m[32m    return res.status(400).json({ error: "A runner id and bearer event token are required." });[m
+[32m+[m[32m  }[m
+[32m+[m[32m  try {[m
+[32m+[m[32m    const accepted = await ingestRunnerEvent({ runId, token, body: req.body });[m
+[32m+[m[32m    res.status(accepted.duplicate ? 200 : 202).json(accepted);[m
+[32m+[m[32m  } catch (error) {[m
+[32m+[m[32m    const message = error instanceof Error ? error.message : "Runner event could not be accepted.";[m
+[32m+[m[32m    res.status(message.includes("token") ? 401 : 400).json({ error: message });[m
+[32m+[m[32m  }[m
+[32m+[m[32m});[m
+[32m+[m
+[32m+[m[32mapp.use("/api/trpc", createExpressMiddleware({ router: appRouter, createContext }));[m
+[32m+[m
+[32m+[m[32mconst clientDist = resolve(process.cwd(), "dist");[m
+[32m+[m[32mif (process.env.NODE_ENV === "production" && existsSync(clientDist)) {[m
+[32m+[m[32m  app.use(express.static(clientDist));[m
+[32m+[m[32m  app.get("*", (_req, res) => res.sendFile(resolve(clientDist, "index.html")));[m
+[32m+[m[32m} else {[m
+[32m+[m[32m  app.use((_req, res) => res.status(404).json({ error: "Not found" }));[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mapp.listen(port, "0.0.0.0", () => {[m
+[32m+[m[32m  console.log(`Palm control plane listening on 0.0.0.0:${port}`);[m
+[32m+[m[32m});[m
+[1mdiff --git a/server/_core/llm.ts b/server/_core/llm.ts[m
+[1mnew file mode 100644[m
+[1mindex 0000000..7492e63[m
+[1m--- /dev/null[m
+[1m+++ b/server/_core/llm.ts[m
+[36m@@ -0,0 +1 @@[m
+[32m+[m[32mexport * from "../../llm";[m
+[1mdiff --git a/server/_core/systemRouter.ts b/server/_core/systemRouter.ts[m
+[1mnew file mode 100644[m
+[1mindex 0000000..a17569f[m
+[1m--- /dev/null[m
+[1m+++ b/server/_core/systemRouter.ts[m
+[36m@@ -0,0 +1,13 @@[m
+[32m+[m[32mimport { z } from "zod";[m
+[32m+[m[32mimport { publicProcedure, router } from "./trpc";[m
+[32m+[m
+[32m+[m[32mexport const systemRouter = router({[m
+[32m+[m[32m  health: publicProcedure.query(() => ({ status: "ok" as const, service: "palm-control-plane" })),[m
+[32m+[m[32m  capabilities: publicProcedure.query(() => ({[m
+[32m+[m[32m    hostedRunner: "github_actions",[m
+[32m+[m[32m    localRunner: true,[m
+[32m+[m[32m    localBrowserRunner: true,[m
+[32m+[m[32m  })),[m
+[32m+[m[32m  version: publicProcedure.query(() => ({ version: process.env.npm_package_version ?? "0.1.0" })),[m
+[32m+[m[32m  echo: publicProcedure.input(z.object({ value: z.string().max(128) })).query(({ input }) => input),[m
+[32m+[m[32m});[m
+[1mdiff --git a/server/_core/trpc.ts b/server/_core/trpc.ts[m
+[1mnew file mode 100644[m
+[1mindex 0000000..f4a432f[m
+[1m--- /dev/null[m
+[1m+++ b/server/_core/trpc.ts[m
+[36m@@ -0,0 +1,27 @@[m
+[32m+[m[32mimport { initTRPC, TRPCError } from "@trpc/server";[m
+[32m+[m[32mimport superjson from "superjson";[m
+[32m+[m[32mimport type { TrpcContext } from "./context";[m
+[32m+[m
+[32m+[m[32mexport const UNAUTHED_ERR_MSG = "Authentication is required.";[m
+[32m+[m[32mexport const NOT_ADMIN_ERR_MSG = "Administrator access is required.";[m
+[32m+[m
+[32m+[m[32mconst t = initTRPC.context<TrpcContext>().create({ transformer: superjson });[m
+[32m+[m
+[32m+[m[32mexport const router = t.router;[m
+[32m+[m[32mexport const publicProcedure = t.procedure;[m
+[32m+[m
+[32m+[m[32mconst requireUser = t.middleware(({ ctx, next }) => {[m
+[32m+[m[32m  if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });[m
+[32m+[m[32m  return next({ ctx: { ...ctx, user: ctx.user } });[m
+[32m+[m[32m});[m
+[32m+[m
+[32m+[m[32mexport const protectedProcedure = t.procedure.use(requireUser);[m
+[32m+[m
+[32m+[m[32mexport const adminProcedure = t.procedure.use([m
+[32m+[m[32m  t.middleware(({ ctx, next }) => {[m
+[32m+[m[32m    if (!ctx.user || ctx.user.role !== "admin") {[m
+[32m+[m[32m      throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });[m
+[32m+[m[32m    }[m
+[32m+[m[32m    return next({ ctx: { ...ctx, user: ctx.user } });[m
+[32m+[m[32m  }),[m
+[32m+[m[32m);[m
+[1mdiff --git a/server/tsconfig.json b/server/tsconfig.json[m
+[1mnew file mode 100644[m
+[1mindex 0000000..2074386[m
+[1m--- /dev/null[m
+[1m+++ b/server/tsconfig.json[m
+[36m@@ -0,0 +1,29 @@[m
+[32m+[m[32m{[m
+[32m+[m[32m  "compilerOptions": {[m
+[32m+[m[32m    "target": "ES2022",[m
+[32m+[m[32m    "module": "ESNext",[m
+[32m+[m[32m    "moduleResolution": "Bundler",[m
+[32m+[m[32m    "lib": ["ES2022"],[m
+[32m+[m[32m    "types": ["node"],[m
+[32m+[m[32m    "esModuleInterop": true,[m
+[32m+[m[32m    "allowSyntheticDefaultImports": true,[m
+[32m+[m[32m    "skipLibCheck": true,[m
+[32m+[m[32m    "strict": true,[m
+[32m+[m[32m    "noEmit": true[m
+[32m+[m[32m  },[m
+[32m+[m[32m  "include": [[m
+[32m+[m[32m    "_core/**/*.ts",[m
+[32m+[m[32m    "../actionRuntime.ts",[m
+[32m+[m[32m    "../csvProfile.ts",[m
+[32m+[m[32m    "../db.ts",[m
+[32m+[m[32m    "../githubActionsRunner.ts",[m
+[32m+[m[32m    "../localPolicy.ts",[m
+[32m+[m[32m    "../localRunner.ts",[m
+[32m+[m[32m    "../palmDomain.ts",[m
+[32m+[m[32m    "../routers.ts",[m
+[32m+[m[32m    "../runnerAdapters.ts",[m
+[32m+[m[32m    "../runnerRuntime.ts",[m
+[32m+[m[32m    "../schema.ts",[m
+[32m+[m[32m    "../storage.ts"[m
+[32m+[m[32m  ][m
+[32m+[m[32m}[m
+[1mdiff --git a/trpc.ts b/trpc.ts[m
+[1mindex a0bcc05..018285a 100644[m
+[1m--- a/trpc.ts[m
+[1m+++ b/trpc.ts[m
+[36m@@ -1,45 +1,8 @@[m
+[31m-import { NOT_ADMIN_ERR_MSG, UNAUTHED_ERR_MSG } from '@shared/const';[m
+[31m-import { initTRPC, TRPCError } from "@trpc/server";[m
+[31m-import superjson from "superjson";[m
+[31m-import type { TrpcContext } from "./context";[m
+[31m-[m
+[31m-const t = initTRPC.context<TrpcContext>().create({[m
+[31m-  transformer: superjson,[m
+[31m-});[m
+[31m-[m
+[31m-export const router = t.router;[m
+[31m-export const publicProcedure = t.procedure;[m
+[31m-[m
+[31m-const requireUser = t.middleware(async opts => {[m
+[31m-  const { ctx, next } = opts;[m
+[31m-[m
+[31m-  if (!ctx.user) {[m
+[31m-    throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });[m
+[31m-  }[m
+[31m-[m
+[31m-  return next({[m
+[31m-    ctx: {[m
+[31m-      ...ctx,[m
+[31m-      user: ctx.user,[m
+[31m-    },[m
+[31m-  });[m
+[31m-});[m
+[31m-[m
+[31m-export const protectedProcedure = t.procedure.use(requireUser);[m
+[31m-[m
+[31m-export const adminProcedure = t.procedure.use([m
+[31m-  t.middleware(async opts => {[m
+[31m-    const { ctx, next } = opts;[m
+[31m-[m
+[31m-    if (!ctx.user || ctx.user.role !== 'admin') {[m
+[31m-      throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });[m
+[31m-    }[m
+[31m-[m
+[31m-    return next({[m
+[31m-      ctx: {[m
+[31m-        ...ctx,[m
+[31m-        user: ctx.user,[m
+[31m-      },[m
+[31m-    });[m
+[31m-  }),[m
+[31m-);[m
+[32m+[m[32mexport {[m
+[32m+[m[32m  adminProcedure,[m
+[32m+[m[32m  NOT_ADMIN_ERR_MSG,[m
+[32m+[m[32m  protectedProcedure,[m
+[32m+[m[32m  publicProcedure,[m
+[32m+[m[32m  router,[m
+[32m+[m[32m  UNAUTHED_ERR_MSG,[m
+[32m+[m[32m} from "./server/_core/trpc";[m

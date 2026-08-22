@@ -1,0 +1,23 @@
+[Unit]
+Description=Palm.ai control plane
+After=network-online.target mysql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=palm
+Group=palm
+WorkingDirectory=/srv/palm/Palm.ai
+EnvironmentFile=/etc/palm/palm.env
+ExecStart=/usr/bin/node /srv/palm/Palm.ai/dist/index.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/srv/palm/Palm.ai /var/log/palm
+
+[Install]
+WantedBy=multi-user.target

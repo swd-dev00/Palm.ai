@@ -1,8 +1,7 @@
 import { z } from "zod";
-import { COOKIE_NAME } from "@shared/const";
-import { getSessionCookieOptions } from "./_core/cookies";
-import { systemRouter } from "./_core/systemRouter";
-import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { COOKIE_NAME, getSessionCookieOptions } from "./server/_core/cookies";
+import { systemRouter } from "./server/_core/systemRouter";
+import { protectedProcedure, publicProcedure, router } from "./server/_core/trpc";
 import {
   addAttachment,
   createProject,
