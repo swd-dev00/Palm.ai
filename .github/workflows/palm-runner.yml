@@ -16,8 +16,20 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate_openapi:
+    name: Validate Palm OpenAPI contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out the contract
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Validate OpenAPI 3.1 structure
+        run: npx --yes @redocly/cli@2.47.0 lint palm-control-plane.openapi.yaml --extends=spec --format=github-actions
+
   execute:
     name: Execute Palm run ${{ inputs.run_id }}
+    needs: validate_openapi
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
