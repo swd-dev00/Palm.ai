@@ -1,0 +1,34 @@
+name: Palm GitHub Actions runner
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Palm runner execution ID
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: palm-runner-${{ inputs.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    name: Execute Palm run ${{ inputs.run_id }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the pinned runner client
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Execute allowlisted Palm handlers
+        env:
+          PALM_BASE_URL: ${{ secrets.PALM_BASE_URL }}
+          PALM_RUNNER_SHARED_SECRET: ${{ secrets.PALM_RUNNER_SHARED_SECRET }}
+          PALM_RUN_ID: ${{ inputs.run_id }}
+          PALM_INPUT_DIR: ${{ runner.temp }}/palm-input
+          PALM_RUNNER_DIR: ${{ runner.temp }}/palm-output
+        run: node ./palm-github-actions-runner.mjs
