@@ -10,6 +10,9 @@ describe("Palm Local Runner scope preservation", () => {
     expect(resolveRunnerScopePreservation(existing, {})).toEqual({
       allowedSkillSlugs: ["document-intelligence"],
       allowedSensitiveActions: ["file_mutation"],
+      allowedBrowserTools: ["open_tab", "navigate", "screenshot", "read_page_text", "close_tab"],
+      navigationAllowlist: [],
+      requiresApprovalForBrowserWrites: true,
     });
   });
 
@@ -18,6 +21,9 @@ describe("Palm Local Runner scope preservation", () => {
     expect(resolveRunnerScopePreservation(existing, { allowedSkillSlugs: ["data-analysis"], allowedSensitiveActions: [] })).toEqual({
       allowedSkillSlugs: ["data-analysis"],
       allowedSensitiveActions: [],
+      allowedBrowserTools: ["open_tab", "navigate", "screenshot", "read_page_text", "close_tab"],
+      navigationAllowlist: [],
+      requiresApprovalForBrowserWrites: true,
     });
   });
 });

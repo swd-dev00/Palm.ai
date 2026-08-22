@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { applyDeviceAuditExportTemplate, restoreAuditExportTemplateColumns } from "../client/src/lib/auditExportTemplate";
-import { serializeAuditCsv } from "../client/src/lib/auditCsv";
+import { applyDeviceAuditExportTemplate, restoreAuditExportTemplateColumns } from "./client/src/lib/auditExportTemplate";
+import { serializeAuditCsv } from "./client/src/lib/auditCsv";
 
 describe("Palm device CSV export templates", () => {
   it("restores a device template in canonical column order", () => {

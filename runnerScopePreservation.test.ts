@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveRunnerScopePreservation } from "../client/src/lib/runnerScope";
+import { resolveRunnerScopePreservation } from "./client/src/lib/runnerScope";
 
 describe("Palm Local Runner scope preservation", () => {
   it("retains custom capability and action scopes when a tool-only edit is saved", () => {

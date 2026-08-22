@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { approvalRemainingMs, formatApprovalCountdown, isApprovalNearExpiry } from "../client/src/lib/approvalCountdown";
+import { approvalRemainingMs, formatApprovalCountdown, isApprovalNearExpiry } from "./client/src/lib/approvalCountdown";
 
 describe("Palm approval countdown", () => {
   const now = Date.parse("2026-08-21T12:00:00.000Z");

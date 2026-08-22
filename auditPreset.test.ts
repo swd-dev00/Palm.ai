@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { restoreAuditPresetFilters } from "../client/src/lib/auditPreset";
+import { restoreAuditPresetFilters } from "./client/src/lib/auditPreset";
 
 describe("Palm saved audit filter presets", () => {
   it("restores persisted device, event type, and date filters for the audit controls", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { serializeAuditCsv } from "../client/src/lib/auditCsv";
+import { serializeAuditCsv } from "./client/src/lib/auditCsv";
 
 describe("Palm Local Runner audit CSV export", () => {
   it("writes a stable header and escapes evidence details safely", () => {
