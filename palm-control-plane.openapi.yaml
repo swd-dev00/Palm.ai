@@ -90,7 +90,7 @@ paths:
         '202': { description: Event stored. }
         '200': { description: Idempotent replay of an existing event. }
         '400': { description: Invalid sequence or event payload. }
-        '401': { description: Missing, expired, or invalid per-run event token. }
+        '401': { description: "Missing, expired, or invalid per-run event token." }
 components:
   securitySchemes:
     palmSession: { type: http, scheme: bearer, bearerFormat: PalmSession }
