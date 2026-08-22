@@ -120,15 +120,20 @@ export async function executePalmAction(input: { taskId: number; userId: number;
     ? onlineRunners.find(runner => runner.runnerType === "browser")
     : onlineRunners.find(runner => runner.runnerType === "file");
   const config = readGithubActionsRunnerConfig();
-  const selectedAdapter = selectRunnerAdapter({ localRunnerAvailable: Boolean(onlineLocalRunner), githubActionsRunnerConfigured: Boolean(config) });
-  if (selectedAdapter.provider === "local" && onlineLocalRunner) {
+  const requiresLocalExecution = needsLocalFileRunner || needsLocalBrowserRunner;
+  const selectedAdapter = selectRunnerAdapter({
+    localRunnerAvailable: Boolean(onlineLocalRunner),
+    githubActionsRunnerConfigured: Boolean(config),
+    requiresLocalExecution,
+  });
+  if (selectedAdapter?.provider === "local" && onlineLocalRunner) {
     const runnerLabel = onlineLocalRunner.runnerType === "browser" ? "Local Browser Runner" : "Local Runner";
     await updateExecutionStep(input.taskId, 1, "completed", `Palm queued this objective for the ${runnerLabel.toLowerCase()} “${onlineLocalRunner.label}”.`);
     await updateExecutionStep(input.taskId, 2, "pending", detail.attachments.some(attachment => attachment.source === "local_reference") ? "Palm retained local-only attachment references; file bytes will not be uploaded or sent to GitHub Actions." : "The local runner will seal enabled capabilities into the assignment when it claims the task.");
     input.onEvent?.({ type: "local_queue", detail: `Queued for ${runnerLabel.toLowerCase()} “${onlineLocalRunner.label}”.`, runnerId: onlineLocalRunner.id });
     return { provider: "local" as const, runnerId: onlineLocalRunner.id };
   }
-  if (needsLocalFileRunner || needsLocalBrowserRunner) {
+  if (requiresLocalExecution || !selectedAdapter) {
     const requiredRunner = needsLocalBrowserRunner ? "Local Browser Runner" : "Local Runner";
     await updateExecutionStep(input.taskId, 1, "completed", `Palm retained the task for a user-controlled ${requiredRunner}.`);
     await updateExecutionStep(input.taskId, 2, "pending", "The task remains queued. Palm will not upload local-only attachment bytes or send them to GitHub Actions.");

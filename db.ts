@@ -8,6 +8,7 @@ import {
   localAuditExportTemplates,
   localAuditFilterPresets,
   localRunnerAuditEvents,
+  localRunnerRequestNonces,
   localRunners,
   localTaskApprovals,
   projects,
@@ -185,11 +186,12 @@ export type RunnerEventInput = {
   data?: Record<string, unknown>;
 };
 
-export async function createRunnerRun(input: { taskId: number; provider: "local" | "github_actions"; runnerClass?: string; idempotencyKey: string; policy?: Record<string, unknown> }) {
+export async function createRunnerRun(input: { taskId: number; provider: "local" | "github_actions"; localRunnerId?: number; runnerClass?: string; idempotencyKey: string; policy?: Record<string, unknown> }) {
   const db = await requireDb();
   const result = await db.insert(runnerRuns).values({
     taskId: input.taskId,
     provider: input.provider,
+    ...(input.localRunnerId ? { localRunnerId: input.localRunnerId } : {}),
     runnerClass: input.runnerClass ?? "standard",
     idempotencyKey: input.idempotencyKey,
     policyJson: input.policy ? JSON.stringify(input.policy) : null,
@@ -266,6 +268,19 @@ export async function getLocalRunnerForUser(userId: number, runnerId: number) {
 export async function getLocalRunnerByTokenHash(tokenHash: string) {
   const db = await requireDb();
   return (await db.select().from(localRunners).where(eq(localRunners.tokenHash, tokenHash)).limit(1))[0] ?? null;
+}
+
+/** Atomically consumes a nonce for a signed Local Runner request. */
+export async function consumeLocalRunnerRequestNonce(runnerId: number, nonce: string, expiresAt: Date) {
+  const db = await requireDb();
+  await db.delete(localRunnerRequestNonces).where(lte(localRunnerRequestNonces.expiresAt, new Date()));
+  try {
+    await db.insert(localRunnerRequestNonces).values({ runnerId, nonce, expiresAt });
+    return true;
+  } catch (error) {
+    if (error instanceof Error && /duplicate|ER_DUP_ENTRY/i.test(error.message)) return false;
+    throw error;
+  }
 }
 
 export async function listLocalRunners(userId: number) {

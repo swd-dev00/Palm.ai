@@ -7,12 +7,13 @@
  * session, set PALM_BROWSER_MODE=cdp and PALM_BROWSER_CDP_URL explicitly.
  * CDP mode is intentionally opt-in because it can expose signed-in sessions.
  */
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import { chromium } from "playwright";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 
-const BASE_URL = required("PALM_BASE_URL");
+const BASE_URL = normalizeBaseUrl(required("PALM_BASE_URL"));
 const TOKEN = required("PALM_LOCAL_TOKEN");
 const RUNNER_DIR = process.env.PALM_RUNNER_DIR || path.join(process.env.HOME || ".", "palm-local-browser-results");
 const MODE = process.env.PALM_BROWSER_MODE || "isolated";
@@ -25,15 +26,43 @@ function required(name) {
   return value;
 }
 
+function normalizeBaseUrl(value) {
+  const url = new URL(value);
+  if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) {
+    throw new Error("PALM_BASE_URL must be an https:// control-plane URL without embedded credentials, query, or fragment.");
+  }
+  return url.toString().replace(/\/$/, "");
+}
+
+function signedHeaders(method, endpoint, body) {
+  const timestamp = String(Date.now());
+  const nonce = randomBytes(32).toString("base64url");
+  const bodyHash = createHash("sha256").update(body).digest("hex");
+  const signatureBase = `v1\n${method.toUpperCase()}\n${endpoint}\n${timestamp}\n${nonce}\n${bodyHash}`;
+  const signature = createHmac("sha256", TOKEN).update(signatureBase).digest("hex");
+  return {
+    authorization: `Local ${TOKEN}`,
+    "content-type": "application/json",
+    "x-palm-runner-timestamp": timestamp,
+    "x-palm-runner-nonce": nonce,
+    "x-palm-runner-signature": signature,
+  };
+}
+
 async function request(endpoint, options = {}) {
+  const method = options.method || "GET";
+  const body = typeof options.body === "string" ? options.body : "";
   const response = await fetch(`${BASE_URL}${endpoint}`, {
     ...options,
-    headers: { authorization: `Local ${TOKEN}`, "content-type": "application/json", ...(options.headers || {}) },
+    method,
+    body: body || undefined,
+    redirect: "error",
+    headers: { ...signedHeaders(method, endpoint, body), ...(options.headers || {}) },
   });
   if (response.status === 204) return null;
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || `${response.status} ${response.statusText}`);
-  return body;
+  const responseBody = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(responseBody.error || `${response.status} ${response.statusText}`);
+  return responseBody;
 }
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));

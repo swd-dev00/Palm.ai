@@ -76,7 +76,7 @@ describe("Palm zero-cost Local Runner", () => {
 
   it("creates an explicit approval request before a browser write tool can proceed", async () => {
     db.getLocalRunnerByTokenHash.mockResolvedValueOnce({ id: 8, userId: 4, label: "Browser Mac", runnerType: "browser", status: "online", allowedToolsJson: "[]", allowedBrowserToolsJson: '["open_tab","navigate","screenshot","read_page_text","close_tab","type_text"]', navigationAllowlistJson: '["docs.example.com"]', allowedSensitiveActionsJson: '["browser_control"]', requiresApprovalForSensitive: true, requiresApprovalForBrowserWrites: true });
-    db.getRunnerRun.mockResolvedValueOnce({ id: 9, provider: "local", taskId: 22 });
+    db.getRunnerRun.mockResolvedValueOnce({ id: 9, provider: "local", taskId: 22, localRunnerId: 8 });
     db.getTaskDetail.mockResolvedValueOnce({ task: { id: 22, title: "Browser task", prompt: "Update the documentation" }, attachments: [] });
     db.createPendingLocalTaskApproval.mockResolvedValueOnce({ id: 17, status: "pending" });
     await expect(requestLocalBrowserApproval("palm_local_browser", 9, { tool: "type_text", url: "https://docs.example.com/edit", targetSummary: "Update the draft" })).resolves.toMatchObject({ approvalRequired: true, taskId: 22 });

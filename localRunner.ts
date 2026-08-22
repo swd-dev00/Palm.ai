@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import {
   addAssistantMessage,
@@ -8,6 +8,7 @@ import {
   createLocalRunner,
   getLocalTaskApproval,
   createRunnerRun,
+  consumeLocalRunnerRequestNonce,
   getLastRunnerEventSequence,
   getLocalRunnerByTokenHash,
   getLocalRunnerForUser,
@@ -52,8 +53,56 @@ export async function authenticateLocalRunner(token: string) {
   return runner;
 }
 
+export type LocalRunnerRequestAuth = {
+  token: string;
+  method: string;
+  path: string;
+  rawBody: Buffer;
+  timestamp: string | undefined;
+  nonce: string | undefined;
+  signature: string | undefined;
+};
+
+const SIGNED_REQUEST_WINDOW_MS = 60_000;
+const noncePattern = /^[A-Za-z0-9_-]{22,96}$/;
+const signaturePattern = /^[a-f0-9]{64}$/i;
+
+function signatureMatches(actual: string, expected: string) {
+  const actualBuffer = Buffer.from(actual, "hex");
+  const expectedBuffer = Buffer.from(expected, "hex");
+  return actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+/**
+ * Authenticates a Local Runner HTTP request. TLS protects the channel, while
+ * the HMAC binds method, path, body, freshness, and one-time nonce so a
+ * proxy/log replay cannot repeat an authenticated local action.
+ */
+export async function authenticateSignedLocalRunnerRequest(input: LocalRunnerRequestAuth) {
+  const timestamp = Number(input.timestamp);
+  const now = Date.now();
+  if (!Number.isSafeInteger(timestamp) || Math.abs(now - timestamp) > SIGNED_REQUEST_WINDOW_MS) {
+    throw new Error("The Local Runner request timestamp is expired or invalid.");
+  }
+  if (!input.nonce || !noncePattern.test(input.nonce)) throw new Error("The Local Runner request nonce is invalid.");
+  if (!input.signature || !signaturePattern.test(input.signature)) throw new Error("The Local Runner request signature is invalid.");
+
+  const runner = await authenticateLocalRunner(input.token);
+  const bodyHash = hash(input.rawBody.toString("utf8"));
+  const signatureBase = `v1\n${input.method.toUpperCase()}\n${input.path}\n${timestamp}\n${input.nonce}\n${bodyHash}`;
+  const expected = createHmac("sha256", input.token).update(signatureBase).digest("hex");
+  if (!signatureMatches(input.signature, expected)) throw new Error("The Local Runner request signature is invalid.");
+
+  const nonceAccepted = await consumeLocalRunnerRequestNonce(runner.id, input.nonce, new Date(timestamp + SIGNED_REQUEST_WINDOW_MS));
+  if (!nonceAccepted) throw new Error("The Local Runner request was already processed.");
+  return runner;
+}
+
 export async function claimLocalTask(token: string) {
-  const runner = await authenticateLocalRunner(token);
+  return claimLocalTaskForRunner(await authenticateLocalRunner(token));
+}
+
+export async function claimLocalTaskForRunner(runner: Awaited<ReturnType<typeof authenticateLocalRunner>>) {
   const runnerType: LocalRunnerType = runner.runnerType === "browser" ? "browser" : "file";
   const configuredTools = (() => {
     try {
@@ -120,6 +169,7 @@ export async function claimLocalTask(token: string) {
   const runId = await createRunnerRun({
     taskId: task.id,
     provider: "local",
+    localRunnerId: runner.id,
     runnerClass: runnerType === "browser" ? "user_browser" : "user_machine",
     idempotencyKey: randomUUID(),
     policy: { cost: "zero", executionHost: "user_machine", network: "user_controlled", runnerType, ...actionPolicy },
@@ -139,7 +189,10 @@ export async function claimLocalTask(token: string) {
 }
 
 export async function getLocalTaskApprovalForRunner(token: string, taskId: number) {
-  const runner = await authenticateLocalRunner(token);
+  return getLocalTaskApprovalForAuthenticatedRunner(await authenticateLocalRunner(token), taskId);
+}
+
+export async function getLocalTaskApprovalForAuthenticatedRunner(runner: Awaited<ReturnType<typeof authenticateLocalRunner>>, taskId: number) {
   return getLocalTaskApproval(runner.userId, taskId);
 }
 
@@ -154,7 +207,10 @@ function domainIsAllowed(url: string | undefined, domains: string[]) {
 }
 
 export async function requestLocalBrowserApproval(token: string, runId: number, input: unknown) {
-  const runner = await authenticateLocalRunner(token);
+  return requestLocalBrowserApprovalForRunner(await authenticateLocalRunner(token), runId, input);
+}
+
+export async function requestLocalBrowserApprovalForRunner(runner: Awaited<ReturnType<typeof authenticateLocalRunner>>, runId: number, input: unknown) {
   if (runner.runnerType !== "browser") throw new Error("Only a Local Browser Runner can request browser-action approval.");
   const action = browserApprovalSchema.parse(input);
   const configuredBrowserTools = (() => {
@@ -178,6 +234,7 @@ export async function requestLocalBrowserApproval(token: string, runId: number, 
   if (!configuredSensitiveActions.has("browser_control")) throw new Error("This device is not permitted to request browser-control approval.");
   const run = await getRunnerRun(runId);
   if (!run || run.provider !== "local") throw new Error("This browser action is not attached to a Local Runner task.");
+  if (run.localRunnerId !== runner.id) throw new Error("This browser action was not assigned to this Local Runner.");
   const detail = await getTaskDetail(runner.userId, run.taskId);
   if (!detail) throw new Error("This browser runner is not authorized for the task.");
   const policy = {
@@ -198,10 +255,14 @@ export async function requestLocalBrowserApproval(token: string, runId: number, 
 }
 
 export async function ingestLocalRunnerEvent(token: string, runId: number, input: unknown) {
-  const runner = await authenticateLocalRunner(token);
+  return ingestLocalRunnerEventForRunner(await authenticateLocalRunner(token), runId, input);
+}
+
+export async function ingestLocalRunnerEventForRunner(runner: Awaited<ReturnType<typeof authenticateLocalRunner>>, runId: number, input: unknown) {
   const event = eventSchema.parse(input);
   const run = await getRunnerRun(runId);
   if (!run || run.provider !== "local") throw new Error("This execution is not assigned to a local runner.");
+  if (run.localRunnerId !== runner.id) throw new Error("This execution is not assigned to this Local Runner.");
   const detail = await getTaskDetail(runner.userId, run.taskId);
   if (!detail) throw new Error("This local runner is not authorized for the task.");
   const last = await getLastRunnerEventSequence(runId);

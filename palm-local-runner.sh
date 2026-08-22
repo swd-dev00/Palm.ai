@@ -2,20 +2,46 @@
 set -euo pipefail
 
 # Palm.ai Local Runner — zero-cost, user-owned execution.
-# Prerequisites: bash, curl, jq. Keep this process open while you want to claim Palm tasks.
+# Prerequisites: bash, curl, jq, and openssl. The server must be reachable by
+# HTTPS with a certificate trusted by this machine; curl --insecure is unsafe
+# and intentionally unsupported.
 
 : "${PALM_BASE_URL:?Set PALM_BASE_URL, for example https://your-palm-domain.example}"
 : "${PALM_LOCAL_TOKEN:?Set PALM_LOCAL_TOKEN from Palm.ai Settings → Local Runner}"
+
+BASE_URL="${PALM_BASE_URL%/}"
+if [[ "$BASE_URL" != https://* ]]; then
+  echo "PALM_BASE_URL must begin with https://. Local Runner refuses plaintext control-plane traffic." >&2
+  exit 2
+fi
 
 RUNNER_DIR="${PALM_RUNNER_DIR:-$HOME/palm-local-results}"
 INPUT_DIR="${PALM_INPUT_DIR:-$HOME/palm-local-input}"
 mkdir -p "$RUNNER_DIR"
 mkdir -p "$INPUT_DIR"
 
-request() {
+sha256_hex() {
+  printf '%s' "$1" | openssl dgst -sha256 -r | awk '{print $1}'
+}
+
+api_request() {
+  local method="$1" path="$2" body="${3:-}"
+  local timestamp nonce body_hash signature_base signature
+  timestamp="$(date +%s)000"
+  nonce="$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=\n')"
+  body_hash="$(sha256_hex "$body")"
+  signature_base=$(printf 'v1\n%s\n%s\n%s\n%s\n%s' "${method^^}" "$path" "$timestamp" "$nonce" "$body_hash")
+  signature=$(printf '%s' "$signature_base" | openssl dgst -sha256 -hmac "$PALM_LOCAL_TOKEN" -hex | awk '{print $2}')
+
   curl --silent --show-error --fail-with-body \
+    --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 10 \
+    -X "$method" \
     -H "Authorization: Local ${PALM_LOCAL_TOKEN}" \
-    -H "Content-Type: application/json" "$@"
+    -H "Content-Type: application/json" \
+    -H "X-Palm-Runner-Timestamp: ${timestamp}" \
+    -H "X-Palm-Runner-Nonce: ${nonce}" \
+    -H "X-Palm-Runner-Signature: ${signature}" \
+    --data "$body" "${BASE_URL}${path}"
 }
 
 report() {
@@ -26,18 +52,18 @@ report() {
   else
     payload=$(jq -n --argjson seq "$sequence" --arg type "$type" --arg status "$status" --arg detail "$detail" '{eventSeq:$seq,type:$type,status:$status,detail:$detail}')
   fi
-  request -X POST "${PALM_BASE_URL}/api/v1/local-runners/runs/${run_id}/events" --data "$payload" >/dev/null
+  api_request POST "/api/v1/local-runners/runs/${run_id}/events" "$payload" >/dev/null
 }
 
 echo "Palm Local Runner started. Results will be written to ${RUNNER_DIR}"
 while true; do
-  request -X POST "${PALM_BASE_URL}/api/v1/local-runners/heartbeat" --data '{}' >/dev/null || { echo "Heartbeat failed; retrying in 10 seconds." >&2; sleep 10; continue; }
-  assignment=$(request -X POST "${PALM_BASE_URL}/api/v1/local-runners/claim" --data '{}' || true)
+  api_request POST "/api/v1/local-runners/heartbeat" '{}' >/dev/null || { echo "Secure heartbeat failed; retrying in 10 seconds." >&2; sleep 10; continue; }
+  assignment=$(api_request POST "/api/v1/local-runners/claim" '{}' || true)
   if [[ -z "$assignment" ]]; then sleep 5; continue; fi
 
   if [[ "$(jq -r '.approvalRequired // false' <<<"$assignment")" == "true" ]]; then
     approval_task_id=$(jq -r '.taskId' <<<"$assignment")
-    approval=$(request "${PALM_BASE_URL}/api/v1/local-runners/tasks/${approval_task_id}/approval" || true)
+    approval=$(api_request GET "/api/v1/local-runners/tasks/${approval_task_id}/approval" '' || true)
     approval_status=$(jq -r '.status // "pending"' <<<"$approval")
     echo "Palm is waiting for ${approval_status} approval of a sensitive local action for task ${approval_task_id}."
     sleep 5
@@ -106,6 +132,7 @@ ${prompt}
 - Allowlisted file tools: ${tools}
 - Input boundary: ${INPUT_DIR}
 - Output boundary: ${RUNNER_DIR}
+- Transport: HTTPS plus timestamped, nonce-bound request signatures
 - Safety mode: only read-only inventory and CSV profiling handlers run. No delete, rename, move, overwrite, upload, network sharing, or arbitrary shell command is allowed.
 
 ## Local file-processing evidence

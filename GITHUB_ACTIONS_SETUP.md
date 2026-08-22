@@ -11,7 +11,7 @@ The initial repository commit adds the following GitHub Actions pieces.
 | `.github/workflows/palm-runner.yml` | A manually dispatched, 15-minute GitHub-hosted workflow. |
 | `githubActionsRunner.ts` | Palm server client for workflow dispatch and cancellation. |
 | `palm-github-actions-runner.mjs` | Worker that obtains a short-lived assignment, downloads cloud uploads, emits ordered events, and deletes its workspace. |
-| `runnerRuntime.ts` | Selects Local Runner first, then GitHub Actions when configured, then the built-in runtime. |
+| `runnerRuntime.ts` | Queues every `local_file`, `local_browser`, or local-reference task exclusively for a matching Local Runner; it may use GitHub Actions only for eligible cloud work. |
 
 ## Palm server configuration
 
@@ -43,7 +43,13 @@ The workflow input contains only a numeric Palm run ID. The worker proves posses
 
 The workflow intentionally uses only `contents: read`, a pinned checkout action revision, and a 15-minute timeout. GitHub recommends setting the minimum `GITHUB_TOKEN` permissions necessary for a workflow. [2] The worker accepts only HTTPS attachment URLs and executes no user-provided shell commands.
 
-> GitHub-hosted execution is not the right path for local files, local browser state, or browser writes. Those tasks remain queued for the existing user-machine runners.
+> GitHub-hosted execution is not the right path for local files, local browser state, or browser writes. `selectRunnerAdapter()` now returns no hosted fallback for a task that requires local execution, and `runnerRuntime.ts` retains the task in the matching Local Runner queue when no device is online.
+
+## Local Runner connection security
+
+Local Runner and Local Browser Runner traffic is separate from the GitHub Actions protocol. After deploying the updated server, both clients require an `https://` `PALM_BASE_URL`, validate the normal system certificate chain, refuse insecure redirects, and sign every request with an HMAC over its method, path, timestamp, nonce, and body hash. The server accepts only requests inside a 60-second window and records each runner nonce once, preventing replay. It also binds a local execution run to its exact claiming device, so another registered device cannot submit its events or request browser approvals.
+
+Deploy the `0013_secure_local_runner_transport.sql` migration before updating any Local Runner clients. Re-register or rotate every Local Runner token during rollout, because the token is the HMAC key. Do not place this token in shell history, a URL, source code, browser storage, or a synchronized home-directory dotfile.
 
 ## First-run checklist
 
@@ -52,11 +58,12 @@ The workflow intentionally uses only `contents: read`, a pinned checkout action 
 3. Add the two repository secrets.
 4. Manually trigger **Palm GitHub Actions runner** once with a harmless numeric test run ID only after the Palm server can issue that run.
 5. Submit a task with a small cloud-uploaded text or CSV file. Confirm the Palm task trace shows `run.dispatching`, `runner.provisioning`, `github_actions.started`, and `github_actions.completed`.
-6. Submit a task with a Local-only attachment. Confirm it remains queued for the Local Runner and is not sent to GitHub Actions.
+6. Submit a task with a Local-only attachment or `local_file`/`local_browser` target while GitHub Actions is configured. Confirm it remains queued for the matching Local Runner and is not sent to GitHub Actions.
+7. Start each updated Local Runner against the public HTTPS hostname. Confirm a valid signed heartbeat succeeds, while a request with an altered body, stale timestamp, reused nonce, or different device-run binding is rejected.
 
 ## Validation limitations
 
-The migration-specific dispatch client, runner event security, and Local Runner routing tests pass in the imported archive. The full archived test suite is not a release gate yet because this export omits several directories referenced by pre-existing tests, including `client/src/`; two pre-existing runner-scope assertions also disagree with the bundled scope helper. Resolve those archive-level gaps before treating the repository as production-ready.
+Focused routing and Local Runner security tests now cover local-only no-fallback selection, HMAC/body integrity, timestamp freshness, nonce replay rejection, device-run binding, and existing approval controls. The full repository suite is still not a production-release gate until real production authentication, object storage, database migration journal normalization, and end-to-end Oracle deployment tests are completed.
 
 ## References
 

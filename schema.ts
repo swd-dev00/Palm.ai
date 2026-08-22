@@ -99,6 +99,8 @@ export const taskAttachments = mysqlTable("task_attachments", {
 export const runnerRuns = mysqlTable("runner_runs", {
   id: int("id").autoincrement().primaryKey(),
   taskId: int("taskId").notNull(),
+  /** Set only for local runs; every local event must originate from this device. */
+  localRunnerId: int("localRunnerId"),
   provider: mysqlEnum("provider", ["local", "github_actions"]).notNull(),
   runnerClass: varchar("runnerClass", { length: 64 }).default("standard").notNull(),
   status: mysqlEnum("status", ["queued", "dispatching", "provisioning", "running", "collecting", "completed", "failed", "cancellation_requested", "cancelled"]).default("queued").notNull(),
@@ -115,6 +117,7 @@ export const runnerRuns = mysqlTable("runner_runs", {
 }, (table) => [
   uniqueIndex("runner_runs_idempotency_idx").on(table.idempotencyKey),
   index("runner_runs_task_created_idx").on(table.taskId, table.createdAt),
+  index("runner_runs_local_runner_idx").on(table.localRunnerId, table.createdAt),
   index("runner_runs_github_workflow_idx").on(table.githubWorkflowRunId),
 ]);
 
@@ -155,6 +158,21 @@ export const localRunners = mysqlTable("local_runners", {
 }, (table) => [
   uniqueIndex("local_runners_token_hash_idx").on(table.tokenHash),
   index("local_runners_user_updated_idx").on(table.userId, table.updatedAt),
+]);
+
+/**
+ * One-time nonces consumed by signed Local Runner requests. They deliberately
+ * contain no raw device credential; expiry permits routine pruning.
+ */
+export const localRunnerRequestNonces = mysqlTable("local_runner_request_nonces", {
+  id: int("id").autoincrement().primaryKey(),
+  runnerId: int("runnerId").notNull(),
+  nonce: varchar("nonce", { length: 96 }).notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("local_runner_request_nonce_unique_idx").on(table.runnerId, table.nonce),
+  index("local_runner_request_nonce_expiry_idx").on(table.expiresAt),
 ]);
 
 export const localTaskApprovals = mysqlTable("local_task_approvals", {

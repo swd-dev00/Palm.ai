@@ -104,12 +104,15 @@ openssl rand -base64 48
 
 Set `DATABASE_URL`, `JWT_SECRET`, and `GITHUB_ACTIONS_RUNNER_SHARED_SECRET` in `/etc/palm/palm.env`. Do **not** set `PALM_DEV_OPEN_ID` in production. Do **not** commit or upload the completed environment file.
 
-The checked-in schema can be generated and applied for an initial database only after `DATABASE_URL` is valid. Review the generated migration before applying it, particularly on any non-empty database.
+The flattened export’s historical SQL migrations are presently at repository root while `drizzle.config.ts` points to `./drizzle`. **Normalize that migration journal and directory before running any Drizzle migration command.** Do not let `drizzle-kit generate` create a second history on a non-empty database. After the canonical journal is committed and reviewed, apply its forward-only migration set, including `0013_secure_local_runner_transport.sql`, before enabling Local Runners.
+
+Verify the security migration after it is applied:
 
 ```bash
-sudo bash -c 'set -a; . /etc/palm/palm.env; set +a; cd /srv/palm/Palm.ai && pnpm drizzle-kit generate'
-sudo bash -c 'set -a; . /etc/palm/palm.env; set +a; cd /srv/palm/Palm.ai && pnpm drizzle-kit migrate'
+mysql -u palm -p palm_ai -e 'SHOW COLUMNS FROM runner_runs LIKE "localRunnerId"; SHOW TABLES LIKE "local_runner_request_nonces";'
 ```
+
+The migration adds device binding for local execution runs and durable one-time nonces for replay-resistant Local Runner requests.
 
 ## 5. Install the service and reverse proxy
 
@@ -134,13 +137,21 @@ sudo certbot --nginx -d YOUR_DOMAIN --redirect --agree-tos -m YOUR_EMAIL
 curl -fsS https://YOUR_DOMAIN/healthz
 ```
 
+The hardened production service binds only to `127.0.0.1`; it must remain reachable publicly **only through Nginx HTTPS**. Do not open the application port in Oracle security lists or UFW.
+
 A successful health response is:
 
 ```json
 {"status":"ok","service":"palm-control-plane"}
 ```
 
-## 6. Configure GitHub Actions only after HTTPS is live
+## 6. Secure and reconnect Local Runners after HTTPS is live
+
+After `0013_secure_local_runner_transport.sql` is applied, distribute the updated `palm-local-runner.sh` or `palm-local-browser-runner.mjs` from this repository. Each updated client requires a normal HTTPS URL, validates the server certificate, and signs every request with a fresh timestamp/nonce/body-bound HMAC. Generate or rotate every Local Runner registration token during this rollout; the token is the signing key and must be kept only on the user-controlled device.
+
+Confirm that a normal signed heartbeat works, then verify that a stale timestamp, repeated nonce, altered body, and an event submitted from a different registered runner are rejected. A task targeted to `local_file`, `local_browser`, or containing a `local_reference` attachment must remain queued if the required local device is offline, even when GitHub Actions is configured.
+
+## 7. Configure GitHub Actions only after HTTPS is live
 
 Once `https://YOUR_DOMAIN/healthz` succeeds, configure repository secrets. The worker needs a publicly reachable HTTPS base URL and the exact same runner shared secret held by the server.
 
@@ -153,7 +164,7 @@ Do not set placeholder values. Test the Actions workflow first with `run_mode=va
 
 The server additionally needs a **separate**, least-privilege GitHub token in `GITHUB_ACTIONS_DISPATCH_TOKEN` with the ability to dispatch the repository workflow. It is not a GitHub Actions repository secret. Rotate any token previously shared in chat and never commit it.
 
-## 7. Update and recover safely
+## 8. Update and recover safely
 
 For an ordinary source update, build first, then restart only after the build succeeds.
 
