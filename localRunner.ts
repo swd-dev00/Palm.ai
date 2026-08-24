@@ -4,6 +4,7 @@ import {
   addAssistantMessage,
   appendRunnerEvent,
   claimQueuedTaskForLocalRunner,
+  claimRunnerRunForLocalRunner,
   createPendingLocalTaskApproval,
   createLocalRunner,
   getLocalTaskApproval,
@@ -102,6 +103,29 @@ export async function claimLocalTask(token: string) {
   return claimLocalTaskForRunner(await authenticateLocalRunner(token));
 }
 
+export async function claimLocalRunForRunner(runner: Awaited<ReturnType<typeof authenticateLocalRunner>>, runId: number) {
+  const runnerType: LocalRunnerType = runner.runnerType === "browser" ? "browser" : "file";
+  const claimedRun = await claimRunnerRunForLocalRunner({ runId, runnerId: runner.id, userId: runner.userId, runnerType });
+  if (!claimedRun) throw new Error("Run claim rejected: the run is not claimable for this authenticated Local Runner.");
+  const detail = await getTaskDetail(runner.userId, claimedRun.taskId);
+  if (!detail) throw new Error("This Local Runner is not authorized for the claimed run.");
+  await updateTaskStatus(claimedRun.taskId, "running");
+  await updateExecutionStep(claimedRun.taskId, 3, "running", "The local runner claimed this pre-created run and is reporting evidence directly to Palm.");
+  await updateRunnerRun(runId, "running");
+  await appendRunnerEvent(runId, claimedRun.taskId, { eventSeq: 1, source: "runner", type: runnerType === "browser" ? "browser.claimed" : "local.claimed", status: "running", detail: `${runnerType === "browser" ? "Local Browser Runner" : "Local runner"} “${runner.label}” claimed this run.` });
+  await recordLocalRunnerAudit({ userId: runner.userId, runnerId: runner.id, taskId: claimedRun.taskId, eventType: "runner.run_claimed", detail: `${runnerType === "browser" ? "Local Browser Runner" : "Local Runner"} “${runner.label}” claimed run #${runId}.`, metadata: { runnerType, runId } });
+  const configuredSkillSlugs = (() => {
+    try { return new Set(JSON.parse(runner.allowedSkillSlugsJson) as string[]); }
+    catch { return null; }
+  })();
+  const skills = (await getSkillCatalog(runner.userId)).filter(skill => skill.enabled && (!configuredSkillSlugs || configuredSkillSlugs.has(skill.slug))).map(skill => skill.slug);
+  return { runId, task: detail.task, attachments: detail.attachments.map(item => ({ id: item.id, name: item.originalName, mimeType: item.mimeType, source: item.source, ...(item.source === "local_reference" ? { localRelativePath: item.localRelativePath } : {}) })), capabilityScope: skills, localToolPolicy: claimedRun.policyJson ? JSON.parse(claimedRun.policyJson) : undefined };
+}
+
+export async function claimLocalRun(token: string, runId: number) {
+  return claimLocalRunForRunner(await authenticateLocalRunner(token), runId);
+}
+
 export async function claimLocalTaskForRunner(runner: Awaited<ReturnType<typeof authenticateLocalRunner>>) {
   const runnerType: LocalRunnerType = runner.runnerType === "browser" ? "browser" : "file";
   const configuredTools = (() => {
@@ -168,21 +192,17 @@ export async function claimLocalTaskForRunner(runner: Awaited<ReturnType<typeof 
     }
   const runId = await createRunnerRun({
     taskId: task.id,
+    userId: runner.userId,
     provider: "local",
-    localRunnerId: runner.id,
+    status: "claimable",
+    localRunnerId: null,
     runnerClass: runnerType === "browser" ? "user_browser" : "user_machine",
     idempotencyKey: randomUUID(),
     policy: { cost: "zero", executionHost: "user_machine", network: "user_controlled", runnerType, ...actionPolicy },
   });
-  await updateExecutionStep(task.id, 1, "completed", "Palm assigned this objective to the user’s local runner.");
-  await updateExecutionStep(task.id, 2, "completed", "Enabled capability preferences were packaged for the local runner.");
-  await updateExecutionStep(task.id, 3, "running", "The local runner claimed this task and is reporting evidence directly to Palm.");
-  await updateRunnerRun(runId, "running");
-  await appendRunnerEvent(runId, task.id, { eventSeq: 1, source: "runner", type: runnerType === "browser" ? "browser.claimed" : "local.claimed", status: "running", detail: `${runnerType === "browser" ? "Local Browser Runner" : "Local runner"} “${runner.label}” claimed this task.` });
-  await recordLocalRunnerAudit({ userId: runner.userId, runnerId: runner.id, taskId: task.id, eventType: "runner.task_claimed", detail: `${runnerType === "browser" ? "Local Browser Runner" : "Local Runner"} “${runner.label}” claimed a task.`, metadata: { runnerType, allowedTools: configuredTools, allowedBrowserTools: configuredBrowserTools } });
-  const detail = await getTaskDetail(runner.userId, task.id);
-  const skills = (await getSkillCatalog(runner.userId)).filter(skill => skill.enabled && (!configuredSkillSlugs || configuredSkillSlugs.has(skill.slug))).map(skill => skill.slug);
-  return { runId, task: detail?.task, attachments: detail?.attachments.map(item => ({ id: item.id, name: item.originalName, mimeType: item.mimeType, source: item.source, ...(item.source === "local_reference" ? { localRelativePath: item.localRelativePath } : {}) })) ?? [], capabilityScope: skills, localToolPolicy: actionPolicy };
+  await updateExecutionStep(task.id, 1, "completed", "Palm created an approved, claimable run for the user’s local runner.");
+  await updateExecutionStep(task.id, 2, "completed", "Enabled capability preferences were packaged into the authoritative run binding.");
+  return claimLocalRunForRunner(runner, runId);
   }
   if (blockedActionClass) return { scopeRestricted: true, reason: `This Local Runner is not permitted to perform the ${blockedActionClass.replace(/_/g, " ")} action class.`, allowedTools: configuredTools };
   return null;

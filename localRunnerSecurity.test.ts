@@ -2,14 +2,12 @@ import { createHash, createHmac } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const db = vi.hoisted(() => ({
-  consumeLocalRunnerRequestNonce: vi.fn(),
-  getLocalRunnerByTokenHash: vi.fn(),
-  touchLocalRunner: vi.fn(),
+  addAssistantMessage: vi.fn(), appendRunnerEvent: vi.fn(), claimQueuedTaskForLocalRunner: vi.fn(), claimRunnerRunForLocalRunner: vi.fn(), createPendingLocalTaskApproval: vi.fn(), createLocalRunner: vi.fn(), createRunnerRun: vi.fn(), getLastRunnerEventSequence: vi.fn(), getLocalRunnerByTokenHash: vi.fn(), getLocalRunnerForUser: vi.fn(), getLocalTaskApproval: vi.fn(), getRunnerRun: vi.fn(), getSkillCatalog: vi.fn(), getTaskDetail: vi.fn(), listQueuedTasksForLocalRunner: vi.fn(), recordLocalRunnerAudit: vi.fn(), touchLocalRunner: vi.fn(), updateExecutionStep: vi.fn(), updateRunnerRun: vi.fn(), updateTaskStatus: vi.fn(), consumeLocalRunnerRequestNonce: vi.fn(),
 }));
 
 vi.mock("./db", () => db);
 
-import { authenticateSignedLocalRunnerRequest } from "./localRunner";
+import { authenticateSignedLocalRunnerRequest, claimLocalRunForRunner } from "./localRunner";
 import { selectRunnerAdapter } from "./runnerAdapters";
 
 const token = "palm_local_signed-request-test-token";
@@ -63,5 +61,30 @@ describe("signed Local Runner requests", () => {
     db.consumeLocalRunnerRequestNonce.mockResolvedValueOnce(false);
     await expect(authenticateSignedLocalRunnerRequest({ token, method: "POST", path, rawBody: body, timestamp, nonce, signature: signatureFor() }))
       .rejects.toThrow("already processed");
+  });
+});
+
+
+describe("deterministic local run binding", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    db.getTaskDetail.mockResolvedValue({ task: { id: 22 }, attachments: [] });
+    db.getSkillCatalog.mockResolvedValue([]);
+    db.appendRunnerEvent.mockResolvedValue({ duplicate: false });
+  });
+
+  it("prevents double-claiming by relying on one atomic runId claim", async () => {
+    const runnerA = { id: 7, userId: 4, label: "Laptop A", runnerType: "file", status: "online", allowedSkillSlugsJson: "[]" };
+    const runnerB = { id: 8, userId: 4, label: "Laptop B", runnerType: "file", status: "online", allowedSkillSlugsJson: "[]" };
+    db.claimRunnerRunForLocalRunner
+      .mockResolvedValueOnce({ id: 9, taskId: 22, provider: "local", policyJson: null })
+      .mockResolvedValueOnce(null);
+
+    const claims = await Promise.allSettled([claimLocalRunForRunner(runnerA as never, 9), claimLocalRunForRunner(runnerB as never, 9)]);
+
+    expect(claims.filter(claim => claim.status === "fulfilled")).toHaveLength(1);
+    expect(claims.filter(claim => claim.status === "rejected")).toHaveLength(1);
+    expect(db.claimRunnerRunForLocalRunner).toHaveBeenCalledWith({ runId: 9, runnerId: 7, userId: 4, runnerType: "file" });
+    expect(db.claimRunnerRunForLocalRunner).toHaveBeenCalledWith({ runId: 9, runnerId: 8, userId: 4, runnerType: "file" });
   });
 });

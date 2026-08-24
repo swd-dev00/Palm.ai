@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, lte, max } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, lte, max } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   agentTasks,
@@ -176,7 +176,7 @@ export async function deleteTask(userId: number, taskId: number) {
   return true;
 }
 
-export type RunnerRunStatus = "queued" | "dispatching" | "provisioning" | "running" | "collecting" | "completed" | "failed" | "cancellation_requested" | "cancelled";
+export type RunnerRunStatus = "queued" | "claimable" | "claimed" | "dispatching" | "provisioning" | "running" | "collecting" | "completed" | "failed" | "cancellation_requested" | "cancelled";
 export type RunnerEventInput = {
   eventSeq: number;
   source: "control_plane" | "github_actions" | "runner" | "artifact_store";
@@ -186,17 +186,42 @@ export type RunnerEventInput = {
   data?: Record<string, unknown>;
 };
 
-export async function createRunnerRun(input: { taskId: number; provider: "local" | "github_actions"; localRunnerId?: number; runnerClass?: string; idempotencyKey: string; policy?: Record<string, unknown> }) {
+export async function createRunnerRun(input: { taskId: number; provider: "local" | "github_actions"; userId?: number; localRunnerId?: number | null; runnerClass?: string; status?: RunnerRunStatus; idempotencyKey: string; policy?: Record<string, unknown> }) {
   const db = await requireDb();
+  const task = (await db.select({ userId: agentTasks.userId }).from(agentTasks).where(eq(agentTasks.id, input.taskId)).limit(1))[0];
+  const userId = input.userId ?? task?.userId;
+  if (!userId) throw new Error("Cannot create a runner run without an owning user.");
   const result = await db.insert(runnerRuns).values({
     taskId: input.taskId,
+    userId,
     provider: input.provider,
-    ...(input.localRunnerId ? { localRunnerId: input.localRunnerId } : {}),
+    localRunnerId: input.localRunnerId ?? null,
+    status: input.status ?? "queued",
     runnerClass: input.runnerClass ?? "standard",
     idempotencyKey: input.idempotencyKey,
     policyJson: input.policy ? JSON.stringify(input.policy) : null,
   });
   return Number(result[0].insertId);
+}
+
+export async function claimRunnerRunForLocalRunner(input: { runId: number; runnerId: number; userId: number; runnerType: "file" | "browser" }) {
+  const db = await requireDb();
+  const runnerClass = input.runnerType === "browser" ? "user_browser" : "user_machine";
+  const result = await db.update(runnerRuns).set({
+    status: "claimed",
+    localRunnerId: input.runnerId,
+    runnerClass,
+    startedAt: new Date(),
+  }).where(and(
+    eq(runnerRuns.id, input.runId),
+    eq(runnerRuns.userId, input.userId),
+    eq(runnerRuns.provider, "local"),
+    eq(runnerRuns.status, "claimable"),
+    isNull(runnerRuns.localRunnerId),
+  ));
+  const affectedRows = Number((result as unknown as [{ affectedRows?: number; changedRows?: number }])?.[0]?.affectedRows ?? (result as unknown as { rowCount?: number })?.rowCount ?? 0);
+  if (affectedRows < 1) return null;
+  return getRunnerRun(input.runId);
 }
 
 export async function getRunnerRun(runId: number) {

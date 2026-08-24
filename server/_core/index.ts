@@ -6,6 +6,7 @@ import { appRouter } from "../../routers";
 import {
   authenticateSignedLocalRunnerRequest,
   claimLocalTaskForRunner,
+  claimLocalRunForRunner,
   getLocalTaskApprovalForAuthenticatedRunner,
   ingestLocalRunnerEventForRunner,
   requestLocalBrowserApprovalForRunner,
@@ -129,6 +130,19 @@ app.post("/api/v1/local-runners/claim", async (req: RawBodyRequest, res) => {
     res.status(400).json({ error: message });
   }
 });
+app.post("/api/v1/local-runners/runs/:runId/claim", async (req: RawBodyRequest, res) => {
+  const runner = await requireSignedLocalRunner(req, res);
+  const runId = positiveId(req.params.runId);
+  if (!runner) return;
+  if (!runId) return res.status(400).json({ error: "A valid run id is required." });
+  try {
+    res.status(200).json(await claimLocalRunForRunner(runner, runId));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Local run claim failed.";
+    res.status(message.includes("authorized") ? 401 : 409).json({ error: message });
+  }
+});
+
 
 app.get("/api/v1/local-runners/tasks/:taskId/approval", async (req: RawBodyRequest, res) => {
   const runner = await requireSignedLocalRunner(req, res);

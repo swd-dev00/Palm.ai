@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const db = vi.hoisted(() => ({
-  addAssistantMessage: vi.fn(), appendRunnerEvent: vi.fn(), claimQueuedTaskForLocalRunner: vi.fn(), createPendingLocalTaskApproval: vi.fn(), createLocalRunner: vi.fn(), createRunnerRun: vi.fn(), getLastRunnerEventSequence: vi.fn(), getLocalRunnerByTokenHash: vi.fn(), getLocalRunnerForUser: vi.fn(), getLocalTaskApproval: vi.fn(), getRunnerRun: vi.fn(), getSkillCatalog: vi.fn(), getTaskDetail: vi.fn(), listQueuedTasksForLocalRunner: vi.fn(), recordLocalRunnerAudit: vi.fn(), touchLocalRunner: vi.fn(), updateExecutionStep: vi.fn(), updateRunnerRun: vi.fn(), updateTaskStatus: vi.fn(),
+  addAssistantMessage: vi.fn(), appendRunnerEvent: vi.fn(), claimQueuedTaskForLocalRunner: vi.fn(), claimRunnerRunForLocalRunner: vi.fn(), createPendingLocalTaskApproval: vi.fn(), createLocalRunner: vi.fn(), createRunnerRun: vi.fn(), getLastRunnerEventSequence: vi.fn(), getLocalRunnerByTokenHash: vi.fn(), getLocalRunnerForUser: vi.fn(), getLocalTaskApproval: vi.fn(), getRunnerRun: vi.fn(), getSkillCatalog: vi.fn(), getTaskDetail: vi.fn(), listQueuedTasksForLocalRunner: vi.fn(), recordLocalRunnerAudit: vi.fn(), touchLocalRunner: vi.fn(), updateExecutionStep: vi.fn(), updateRunnerRun: vi.fn(), updateTaskStatus: vi.fn(),
 }));
 vi.mock("./db", () => db);
 
@@ -15,6 +15,7 @@ describe("Palm zero-cost Local Runner", () => {
     db.claimQueuedTaskForLocalRunner.mockResolvedValue({ id: 22, title: "Local task", prompt: "Create a local record" });
     db.listQueuedTasksForLocalRunner.mockResolvedValue([{ id: 22, title: "Local task", prompt: "Create a local record" }]);
     db.createRunnerRun.mockResolvedValue(9);
+    db.claimRunnerRunForLocalRunner.mockResolvedValue({ id: 9, taskId: 22, provider: "local", policyJson: JSON.stringify({ allowedTools: ["inventory_files", "extract_text_metadata", "profile_csv", "write_result_record"] }) });
     db.getTaskDetail.mockResolvedValue({ task: { id: 22, title: "Local task", prompt: "Create a local record" }, attachments: [] });
     db.getLocalTaskApproval.mockResolvedValue(null);
     db.getSkillCatalog.mockResolvedValue([{ slug: "document-intelligence", enabled: true }]);
@@ -57,7 +58,7 @@ describe("Palm zero-cost Local Runner", () => {
     expect(assignment).toMatchObject({ runId: 9, task: { id: 22 }, capabilityScope: ["document-intelligence"] });
     expect(db.updateRunnerRun).toHaveBeenCalledWith(9, "running");
     expect(db.appendRunnerEvent).toHaveBeenCalledWith(9, 22, expect.objectContaining({ type: "local.claimed", status: "running" }));
-    expect(db.recordLocalRunnerAudit).toHaveBeenCalledWith(expect.objectContaining({ runnerId: 7, taskId: 22, eventType: "runner.task_claimed" }));
+    expect(db.recordLocalRunnerAudit).toHaveBeenCalledWith(expect.objectContaining({ runnerId: 7, taskId: 22, eventType: "runner.run_claimed" }));
   });
 
   it("filters the task capability payload to the claiming device’s permitted Palm capabilities", async () => {
