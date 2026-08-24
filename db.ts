@@ -547,3 +547,22 @@ export async function getDashboardSnapshot(userId: number) {
     totals: { tasks: allTasks.length, completed, running, activeSkills: skills.filter(skill => skill.enabled).length },
   };
 }
+/**
+ * Counts per-user runner runs for a provider since the given UTC date.
+ * Provides the runtime a persisted usage source for the quota gate.
+ */
+export async function countProviderRunsSince(
+  userId: string, 
+  provider: string, 
+  sinceUTC: Date
+): Promise<number> {
+  // Note: Adjust the query syntax below if you are using an ORM like Drizzle or Prisma.
+  // This is the raw SQL equivalent for the logic.
+  const result = await db.query(
+    `SELECT COUNT(*) as count FROM runs 
+     WHERE user_id = $1 AND provider = $2 AND created_at >= $3`,
+    [userId, provider, sinceUTC.toISOString()]
+  );
+
+  return parseInt(result[0].count, 10);
+}

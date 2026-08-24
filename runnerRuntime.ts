@@ -1,9 +1,27 @@
-import { SignJWT, jwtVerify } from "jose";
+import { evaluateRunnerQuota } from './costQuota';
+import { countProviderRunsSince } from './db';import { SignJWT, jwtVerify } from "jose";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { ENV } from "./_core/env";
 import { readGithubActionsRunnerConfig, startGithubActionsRunner, stopGithubActionsRunner } from "./githubActionsRunner";
 import {
+// 1. Check same-day hosted-run usage before creating run/dispatching
+const quotaDecision = await evaluateRunnerQuota(userId, 'github_actions', countProviderRunsSince);
+
+if (!quotaDecision.allowed) {
+  // Exhausted quota stops before runner creation
+  return {
+    status: 'error',
+    code: quotaDecision.code,
+    message: quotaDecision.reason
+  };
+}
+
+// 2. Store quota context in the GitHub Actions runner policy at dispatch time
+const runnerPolicy = {
+  // ... keep your existing policy parameters here ...
+  quotaContext: quotaDecision.quotaContext 
+};
   addAssistantMessage,
   appendRunnerEvent,
   createRunnerRun,
