@@ -99,11 +99,12 @@ export const taskAttachments = mysqlTable("task_attachments", {
 export const runnerRuns = mysqlTable("runner_runs", {
   id: int("id").autoincrement().primaryKey(),
   taskId: int("taskId").notNull(),
-  /** Set only for local runs; every local event must originate from this device. */
+  userId: int("userId").notNull(),
+  /** Set only after a local run is atomically claimed by a device. */
   localRunnerId: int("localRunnerId"),
   provider: mysqlEnum("provider", ["local", "github_actions"]).notNull(),
   runnerClass: varchar("runnerClass", { length: 64 }).default("standard").notNull(),
-  status: mysqlEnum("status", ["queued", "dispatching", "provisioning", "running", "collecting", "completed", "failed", "cancellation_requested", "cancelled"]).default("queued").notNull(),
+  status: mysqlEnum("status", ["queued", "claimable", "claimed", "dispatching", "provisioning", "running", "collecting", "completed", "failed", "cancellation_requested", "cancelled"]).default("queued").notNull(),
   idempotencyKey: varchar("idempotencyKey", { length: 128 }).notNull(),
   githubWorkflowRunId: varchar("githubWorkflowRunId", { length: 32 }),
   githubWorkflowRunUrl: varchar("githubWorkflowRunUrl", { length: 512 }),
@@ -116,6 +117,7 @@ export const runnerRuns = mysqlTable("runner_runs", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => [
   uniqueIndex("runner_runs_idempotency_idx").on(table.idempotencyKey),
+  index("runner_runs_user_provider_status_idx").on(table.userId, table.provider, table.status),
   index("runner_runs_task_created_idx").on(table.taskId, table.createdAt),
   index("runner_runs_local_runner_idx").on(table.localRunnerId, table.createdAt),
   index("runner_runs_github_workflow_idx").on(table.githubWorkflowRunId),

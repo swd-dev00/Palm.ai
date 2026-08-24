@@ -13,7 +13,7 @@ import { createTask, getAttachmentForUser, getLocalTaskApproval, getTaskDetail }
 import { deriveTaskTitle } from "../palmDomain";
 import { storageGetSignedUrl } from "../storage";
 import { cancelPalmRun } from "../runnerRuntime";
-import { authenticateLocalRunner, claimLocalTask, ingestLocalRunnerEvent, registerLocalRunner, requestLocalBrowserApproval } from "../localRunner";
+import { authenticateLocalRunner, claimLocalRun, claimLocalTask, ingestLocalRunnerEvent, registerLocalRunner, requestLocalBrowserApproval } from "../localRunner";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -138,6 +138,19 @@ async function startServer() {
       res.status(400).json({ error: error instanceof Error ? error.message : "Local task claim failed." });
     }
   });
+  app.post("/api/v1/local-runners/runs/:runId/claim", async (req, res) => {
+    const token = req.header("authorization")?.replace(/^Local\s+/i, "");
+    const runId = asPositiveId(req.params.runId);
+    if (!token) return res.status(401).json({ error: "A Local runner token is required." });
+    if (!runId) return res.status(400).json({ error: "A valid run id is required." });
+    try {
+      res.status(200).json(await claimLocalRun(token, runId));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Local run claim failed.";
+      res.status(message.includes("authorized") ? 401 : 409).json({ error: message });
+    }
+  });
+
   app.get("/api/v1/local-runners/tasks/:taskId/approval", async (req, res) => {
     const token = req.header("authorization")?.replace(/^Local\s+/i, "");
     const taskId = asPositiveId(req.params.taskId);
