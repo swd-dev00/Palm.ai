@@ -25,6 +25,7 @@ Set the following values in the **Palm server environment**, not in browser code
 | `GITHUB_ACTIONS_REF` | `main` | Yes; use a protected branch |
 | `GITHUB_ACTIONS_DISPATCH_TOKEN` | Fine-grained token or GitHub App installation token limited to this repository with **Actions: write** | Yes |
 | `GITHUB_ACTIONS_RUNNER_SHARED_SECRET` | A randomly generated value of at least 32 characters | Yes |
+| `PALM_GITHUB_ACTIONS_DAILY_QUOTA` | Hosted runs allowed per user per UTC day, for example `3`. `0` or unset blocks every hosted dispatch. | Yes, to enable hosted runs |
 
 The workflow dispatch endpoint requires a token with repository **Actions: write** permission. [1] Keep the dispatch credential server-side. It is never exposed to the browser or sent as a workflow input.
 

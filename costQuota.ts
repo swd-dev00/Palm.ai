@@ -12,9 +12,9 @@ export type QuotaDecision =
  * Evaluates runner-provider quota decisions using UTC daily windows.
  */
 export async function evaluateRunnerQuota(
-  userId: string,
+  userId: number,
   provider: 'local' | 'github_actions',
-  getUsageCount: (userId: string, provider: string, sinceUTC: Date) => Promise<number>
+  getUsageCount: (userId: number, provider: 'local' | 'github_actions', sinceUTC: Date) => Promise<number>
 ): Promise<QuotaDecision> {
   // 1. Treat Local Runner execution as zero-cost/unlimited
   if (provider === 'local') {
@@ -27,7 +27,8 @@ export async function evaluateRunnerQuota(
   // 2. Evaluate GitHub Actions Hosted-Runner quota
   if (provider === 'github_actions') {
     const limitEnv = process.env.PALM_GITHUB_ACTIONS_DAILY_QUOTA;
-    const dailyLimit = limitEnv ? parseInt(limitEnv, 10) : 0;
+    const parsedLimit = limitEnv ? Number.parseInt(limitEnv, 10) : 0;
+    const dailyLimit = Number.isFinite(parsedLimit) ? parsedLimit : 0;
 
     // Default to 0 unless explicitly configured
     if (dailyLimit <= 0) {

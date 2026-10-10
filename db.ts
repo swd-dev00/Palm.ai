@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, isNull, lte, max } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, isNull, lte, max } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   agentTasks,
@@ -548,21 +548,15 @@ export async function getDashboardSnapshot(userId: number) {
   };
 }
 /**
- * Counts per-user runner runs for a provider since the given UTC date.
- * Provides the runtime a persisted usage source for the quota gate.
+ * Counts a user's runner runs for one provider created at or after `sinceUTC`.
+ * This is the persisted usage source for the hosted-runner quota gate.
  */
-export async function countProviderRunsSince(
-  userId: string, 
-  provider: string, 
-  sinceUTC: Date
-): Promise<number> {
-  // Note: Adjust the query syntax below if you are using an ORM like Drizzle or Prisma.
-  // This is the raw SQL equivalent for the logic.
-  const result = await db.query(
-    `SELECT COUNT(*) as count FROM runs 
-     WHERE user_id = $1 AND provider = $2 AND created_at >= $3`,
-    [userId, provider, sinceUTC.toISOString()]
-  );
-
-  return parseInt(result[0].count, 10);
+export async function countProviderRunsSince(userId: number, provider: "local" | "github_actions", sinceUTC: Date): Promise<number> {
+  const db = await requireDb();
+  const rows = await db.select({ count: count() }).from(runnerRuns).where(and(
+    eq(runnerRuns.userId, userId),
+    eq(runnerRuns.provider, provider),
+    gte(runnerRuns.createdAt, sinceUTC),
+  ));
+  return Number(rows[0]?.count ?? 0);
 }

@@ -1,29 +1,12 @@
-import { evaluateRunnerQuota } from './costQuota';
-import { countProviderRunsSince } from './db';import { SignJWT, jwtVerify } from "jose";
+import { SignJWT, jwtVerify } from "jose";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { ENV } from "./_core/env";
 import { readGithubActionsRunnerConfig, startGithubActionsRunner, stopGithubActionsRunner } from "./githubActionsRunner";
 import {
-// 1. Check same-day hosted-run usage before creating run/dispatching
-const quotaDecision = await evaluateRunnerQuota(userId, 'github_actions', countProviderRunsSince);
-
-if (!quotaDecision.allowed) {
-  // Exhausted quota stops before runner creation
-  return {
-    status: 'error',
-    code: quotaDecision.code,
-    message: quotaDecision.reason
-  };
-}
-
-// 2. Store quota context in the GitHub Actions runner policy at dispatch time
-const runnerPolicy = {
-  // ... keep your existing policy parameters here ...
-  quotaContext: quotaDecision.quotaContext 
-};
   addAssistantMessage,
   appendRunnerEvent,
+  countProviderRunsSince,
   createRunnerRun,
   getLastRunnerEventSequence,
   getRunnerRun,
@@ -38,6 +21,7 @@ const runnerPolicy = {
 import { storageGetSignedUrl, storagePut } from "./storage";
 import { runPalmTask, type PalmExecutionEvent } from "./actionRuntime";
 import { selectRunnerAdapter } from "./runnerAdapters";
+import { evaluateRunnerQuota } from "./costQuota";
 
 const encoder = new TextEncoder();
 const eventTokenKey = () => encoder.encode(ENV.cookieSecret || "palm-local-development-key-change-before-production");
@@ -160,12 +144,22 @@ export async function executePalmAction(input: { taskId: number; userId: number;
   }
   if (selectedAdapter.provider === "built_in" || !config) return runPalmTask(input);
 
+  // Hosted execution is metered: check same-day (UTC) usage before any run row is created
+  // or GitHub is contacted. An unconfigured quota blocks hosted dispatch entirely.
+  const quotaDecision = await evaluateRunnerQuota(input.userId, "github_actions", countProviderRunsSince);
+  if (!quotaDecision.allowed) {
+    await updateExecutionStep(input.taskId, 1, "completed", "Palm accepted the objective, but hosted execution is not available.");
+    await updateExecutionStep(input.taskId, 3, "error", "The GitHub Actions daily quota prevented a hosted runner from being dispatched.");
+    await updateTaskStatus(input.taskId, "error", { errorMessage: quotaDecision.reason });
+    throw new Error(quotaDecision.reason);
+  }
+
   const runId = await createRunnerRun({
     taskId: input.taskId,
     provider: "github_actions",
     runnerClass: "github_actions_ubuntu",
     idempotencyKey: randomUUID(),
-    policy: { runnerClass: "github_actions_ubuntu", maxRuntimeSeconds: 900, publicIngress: false, retryLimit: 0, attachmentBoundary: "cloud_upload_only", noBrowserIngress: true },
+    policy: { runnerClass: "github_actions_ubuntu", maxRuntimeSeconds: 900, publicIngress: false, retryLimit: 0, attachmentBoundary: "cloud_upload_only", noBrowserIngress: true, quotaContext: quotaDecision.quotaContext },
   });
   try {
     await updateTaskStatus(input.taskId, "running");
