@@ -119,7 +119,33 @@ export async function claimLocalRunForRunner(runner: Awaited<ReturnType<typeof a
     catch { return null; }
   })();
   const skills = (await getSkillCatalog(runner.userId)).filter(skill => skill.enabled && (!configuredSkillSlugs || configuredSkillSlugs.has(skill.slug))).map(skill => skill.slug);
-  return { runId, task: detail.task, attachments: detail.attachments.map(item => ({ id: item.id, name: item.originalName, mimeType: item.mimeType, source: item.source, ...(item.source === "local_reference" ? { localRelativePath: item.localRelativePath } : {}) })), capabilityScope: skills, localToolPolicy: claimedRun.policyJson ? JSON.parse(claimedRun.policyJson) : undefined };
+  return { runId, task: detail.task, attachments: detail.attachments.map(item => ({ id: item.id, name: item.originalName, mimeType: item.mimeType, source: item.source, ...(item.source === "local_reference" ? { localRelativePath: item.localRelativePath } : {}) })), capabilityScope: skills, localToolPolicy: narrowRunPolicyToRunner(claimedRun.policyJson, runner) };
+}
+
+/**
+ * A claimable run's stored policy was computed when the run was created, possibly for a
+ * different device. The claiming device may never receive tools beyond its own allowlist.
+ */
+function narrowRunPolicyToRunner(policyJson: string | null | undefined, runner: Awaited<ReturnType<typeof authenticateLocalRunner>>) {
+  if (!policyJson) return undefined;
+  let policy: Record<string, unknown>;
+  try { policy = JSON.parse(policyJson) as Record<string, unknown>; }
+  catch { return undefined; }
+  const deviceList = (json: string | null | undefined): Set<string> | null => {
+    try {
+      const parsed = JSON.parse(json ?? "") as unknown;
+      return Array.isArray(parsed) ? new Set(parsed.filter((value): value is string => typeof value === "string")) : null;
+    } catch { return null; }
+  };
+  const fileTools = deviceList(runner.allowedToolsJson);
+  const browserTools = deviceList(runner.allowedBrowserToolsJson);
+  if (Array.isArray(policy.allowedTools)) {
+    policy.allowedTools = (policy.allowedTools as unknown[]).filter(tool => typeof tool === "string" && LOCAL_FILE_TOOL_ALLOWLIST.includes(tool as LocalFileTool) && (!fileTools || fileTools.has(tool)));
+  }
+  if (Array.isArray(policy.allowedBrowserTools)) {
+    policy.allowedBrowserTools = (policy.allowedBrowserTools as unknown[]).filter(tool => typeof tool === "string" && LOCAL_BROWSER_ALL_TOOLS.includes(tool as LocalBrowserTool) && (!browserTools || browserTools.has(tool)));
+  }
+  return policy;
 }
 
 export async function claimLocalRun(token: string, runId: number) {
